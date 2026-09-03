@@ -32,7 +32,10 @@ const args = Object.fromEntries(
 );
 
 const PORT = Number(args.port || process.env.LINEAR_OAUTH_PORT || 8788);
-const ACTOR = args.actor === 'user' ? 'user' : 'application';
+// Linear's `actor` accepts only 'user' (default) or 'app'. Default to a
+// user-actor token — for an admin that reads the whole workspace, which is all
+// this dashboard needs. Pass `--actor=app` for an app-actor token instead.
+const ACTOR = args.actor === 'app' || args.actor === 'application' ? 'app' : 'user';
 const REDIRECT_URI = `http://localhost:${PORT}/callback`;
 const AUTHORIZE_URL = 'https://linear.app/oauth/authorize';
 const TOKEN_URL = 'https://api.linear.app/oauth/token';
@@ -60,27 +63,28 @@ function openBrowser(url) {
   }
 }
 
-const clientId = await prompt('Linear OAuth Client ID: ', process.env.LINEAR_CLIENT_ID);
-const clientSecret = await prompt(
-  'Linear OAuth Client Secret: ',
-  process.env.LINEAR_CLIENT_SECRET,
-);
+const clientId = (
+  await prompt('Linear OAuth Client ID: ', process.env.LINEAR_CLIENT_ID)
+).trim();
+const clientSecret = (
+  await prompt('Linear OAuth Client Secret: ', process.env.LINEAR_CLIENT_SECRET)
+).trim();
 if (!clientId || !clientSecret) {
   console.error('Client ID and Client Secret are both required.');
   process.exit(1);
 }
 
 const state = crypto.randomBytes(16).toString('hex');
-const authUrl = new URL(AUTHORIZE_URL);
-authUrl.search = new URLSearchParams({
+const authParams = {
   client_id: clientId,
   redirect_uri: REDIRECT_URI,
   response_type: 'code',
   scope: SCOPE,
   state,
-  actor: ACTOR,
-  prompt: 'consent',
-}).toString();
+};
+if (ACTOR === 'app') authParams.actor = 'app';
+const authUrl = new URL(AUTHORIZE_URL);
+authUrl.search = new URLSearchParams(authParams).toString();
 
 const token = await new Promise((resolve, reject) => {
   const server = http.createServer(async (req, res) => {
@@ -122,10 +126,24 @@ const token = await new Promise((resolve, reject) => {
           client_secret: clientSecret,
         }).toString(),
       });
-      const body = await tokenRes.json();
+      const rawBody = await tokenRes.text();
+      let body;
+      try {
+        body = JSON.parse(rawBody);
+      } catch {
+        body = { raw: rawBody };
+      }
       if (!tokenRes.ok || !body.access_token) {
-        finish(`Token exchange failed (${tokenRes.status}). You can close this tab.`, 400);
-        reject(new Error(`Token exchange failed: ${JSON.stringify(body)}`));
+        finish(`Token exchange failed (${tokenRes.status}). Check the terminal for details.`, 400);
+        console.error(`\nToken exchange failed — HTTP ${tokenRes.status}`);
+        console.error('Response:', JSON.stringify(body, null, 2));
+        console.error('\nSent redirect_uri:', REDIRECT_URI);
+        console.error(
+          'Make sure that EXACT string is one of the Redirect URIs on the Linear OAuth app',
+          '(no trailing slash, no extra whitespace/newline), and that the Client ID/Secret',
+          'are from that same app.\n',
+        );
+        reject(new Error(`Token exchange failed (${tokenRes.status})`));
         return;
       }
       finish('Got the token. You can close this tab and return to the terminal.');
