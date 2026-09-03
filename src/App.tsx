@@ -77,7 +77,12 @@ export default function App() {
     setSelectedProjectId(id);
     setExpandedIssueId(null);
   };
-  const closeDrilldown = () => setSelectedProjectId(null);
+  // Return to the overview grid — shared by the drill-down back link and the
+  // "MISSION CONTROL" header home link. A no-op when already on the overview.
+  const goHome = () => {
+    setSelectedProjectId(null);
+    setExpandedIssueId(null);
+  };
   const toggleIssue = (id: string) => setExpandedIssueId((cur) => (cur === id ? null : id));
 
   return (
@@ -95,6 +100,7 @@ export default function App() {
         syncedAgo={syncedAgo}
         clockStr={clockStr}
         stale={stale}
+        onHome={goHome}
       />
 
       {stale && board && (
@@ -144,7 +150,7 @@ export default function App() {
       {board && selectedProject && (
         <Drilldown
           project={selectedProject}
-          onClose={closeDrilldown}
+          onClose={goHome}
           expandedIssueId={expandedIssueId}
           onToggleIssue={toggleIssue}
         />

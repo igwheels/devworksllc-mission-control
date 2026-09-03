@@ -18,11 +18,14 @@ export function Header({
   syncedAgo,
   clockStr,
   stale,
+  onHome,
 }: {
   stats: HeaderStats;
   syncedAgo: string;
   clockStr: string;
   stale: boolean;
+  /** Return to the overview grid. A no-op when already there. */
+  onHome: () => void;
 }) {
   return (
     <div
@@ -44,7 +47,25 @@ export function Header({
         />
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-            <div style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '.02em' }}>
+            <div
+              className="mc-home"
+              role="button"
+              tabIndex={0}
+              onClick={onHome}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  onHome();
+                }
+              }}
+              title="Back to overview"
+              style={{
+                fontSize: '22px',
+                fontWeight: 700,
+                letterSpacing: '.02em',
+                cursor: 'pointer',
+              }}
+            >
               MISSION CONTROL
             </div>
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)', fontFamily: MONO }}>

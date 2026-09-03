@@ -53,3 +53,21 @@ body {
 .mc-code:hover {
   color: rgba(255, 255, 255, 0.75) !important;
 }
+
+/* "MISSION CONTROL" in the header doubles as a home link back to the overview
+   grid. #4C8DFF is the design's link/accent colour, so a hover tint reads as
+   "clickable" without turning the wordmark into an underlined hyperlink. */
+.mc-home {
+  transition: color 0.15s;
+  border-radius: 3px;
+}
+.mc-home:hover {
+  color: #4c8dff;
+}
+.mc-home:focus {
+  outline: none;
+}
+.mc-home:focus-visible {
+  outline: 2px solid rgba(76, 141, 255, 0.55);
+  outline-offset: 4px;
+}
