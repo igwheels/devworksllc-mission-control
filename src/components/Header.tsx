@@ -1,5 +1,6 @@
 import { MONO } from '../theme';
 import type { HeaderStats } from '../board';
+import markUrl from '../assets/devworks-mark.png';
 
 const labelStyle: React.CSSProperties = {
   fontSize: '10px',
@@ -35,17 +36,24 @@ export function Header({
         borderBottom: '1px solid rgba(255,255,255,.09)',
       }}
     >
-      <div>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
-          <div style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '.02em' }}>
-            MISSION CONTROL
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        <img
+          src={markUrl}
+          alt="DevWorks"
+          style={{ height: '30px', width: 'auto', flex: 'none' }}
+        />
+        <div>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
+            <div style={{ fontSize: '22px', fontWeight: 700, letterSpacing: '.02em' }}>
+              MISSION CONTROL
+            </div>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)', fontFamily: MONO }}>
+              DevWorks LLC
+            </div>
           </div>
-          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)', fontFamily: MONO }}>
-            DevWorks LLC
+          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)', marginTop: '4px' }}>
+            {stats.projectCount} active {stats.projectCount === 1 ? 'project' : 'projects'}
           </div>
-        </div>
-        <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)', marginTop: '4px' }}>
-          {stats.projectCount} active {stats.projectCount === 1 ? 'project' : 'projects'}
         </div>
       </div>
 
