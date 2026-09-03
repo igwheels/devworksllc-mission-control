@@ -38,14 +38,15 @@ export interface RawBoard {
 
 // ---- GraphQL --------------------------------------------------------------
 
-// Kept deliberately shallow: Linear enforces a GraphQL complexity budget, and a
-// nested `children` connection multiplies cost (projects x issues x children).
-// Sub-issues are themselves issues in the same project, so we fetch every issue
-// flat (parents and children alike) with a `parent` ref and rebuild the tree in
-// `mapResponse`. Cost is then just projects x issues.
-export const BOARD_QUERY = /* GraphQL */ `
-  query MissionControl {
-    projects(first: 20) {
+// Linear enforces a GraphQL complexity budget (~10k). A single query that nests
+// projects -> issues (let alone -> children) multiplies past it, so we run two
+// flat queries and stitch them in `mapResponse`:
+//   1. projects  — scalar fields only, no nested issues
+//   2. issues    — every project-attached issue flat, each carrying `project`
+//                  and `parent` refs; the parent/child tree is rebuilt locally.
+export const PROJECTS_QUERY = /* GraphQL */ `
+  query MissionControlProjects {
+    projects(first: 50) {
       nodes {
         id
         name
@@ -54,18 +55,24 @@ export const BOARD_QUERY = /* GraphQL */ `
         targetDate
         status { type name }
         lead { displayName name }
-        issues(first: 200) {
-          nodes {
-            id
-            identifier
-            title
-            priority
-            completedAt
-            state { type name }
-            assignee { displayName name }
-            parent { id }
-          }
-        }
+      }
+    }
+  }
+`;
+
+export const ISSUES_QUERY = /* GraphQL */ `
+  query MissionControlIssues {
+    issues(first: 250, filter: { project: { null: false } }) {
+      nodes {
+        id
+        identifier
+        title
+        priority
+        completedAt
+        state { type name }
+        assignee { displayName name }
+        parent { id }
+        project { id }
       }
     }
   }
@@ -90,6 +97,7 @@ interface GqlIssue {
   state: GqlState | null;
   assignee: GqlUser | null;
   parent: { id: string } | null;
+  project: { id: string } | null;
 }
 interface GqlProject {
   id: string;
@@ -99,10 +107,13 @@ interface GqlProject {
   targetDate: string | null;
   status: GqlState | null;
   lead: GqlUser | null;
-  issues: { nodes: GqlIssue[] } | null;
 }
-export interface GqlResponse {
+export interface GqlProjectsResponse {
   data?: { projects?: { nodes: GqlProject[] } };
+  errors?: Array<{ message: string }>;
+}
+export interface GqlIssuesResponse {
+  data?: { issues?: { nodes: GqlIssue[] } };
   errors?: Array<{ message: string }>;
 }
 
@@ -191,16 +202,33 @@ export function deriveHealth(
 
 const HIDDEN_PROJECT_STATES = new Set(['completed', 'canceled']);
 
-export function mapResponse(res: GqlResponse, now: number = Date.now()): RawBoard {
-  if (res.errors?.length) {
-    throw new Error(res.errors.map((e) => e.message).join('; '));
+export function mapResponse(
+  projectsRes: GqlProjectsResponse,
+  issuesRes: GqlIssuesResponse,
+  now: number = Date.now(),
+): RawBoard {
+  for (const res of [projectsRes, issuesRes]) {
+    if (res.errors?.length) {
+      throw new Error(res.errors.map((e) => e.message).join('; '));
+    }
   }
-  const nodes = res.data?.projects?.nodes ?? [];
+  const projectNodes = projectsRes.data?.projects?.nodes ?? [];
+  const issueNodes = issuesRes.data?.issues?.nodes ?? [];
 
-  const projects: RawProject[] = nodes
+  // Bucket every issue by its project.
+  const issuesByProject = new Map<string, GqlIssue[]>();
+  for (const i of issueNodes) {
+    const pid = i.project?.id;
+    if (!pid) continue;
+    const arr = issuesByProject.get(pid);
+    if (arr) arr.push(i);
+    else issuesByProject.set(pid, [i]);
+  }
+
+  const projects: RawProject[] = projectNodes
     .filter((p) => !HIDDEN_PROJECT_STATES.has(p.status?.type ?? ''))
     .map((p) => {
-      const allIssues = p.issues?.nodes ?? [];
+      const allIssues = issuesByProject.get(p.id) ?? [];
 
       // Rebuild the parent -> direct-children map from the flat list.
       const childrenByParent = new Map<string, GqlIssue[]>();
@@ -269,19 +297,26 @@ export function authHeader(token: string): string {
   return `Bearer ${t}`;
 }
 
-export async function fetchLinearBoard(token: string, now: number = Date.now()): Promise<RawBoard> {
+async function gql<T>(token: string, query: string): Promise<T> {
   const res = await fetch('https://api.linear.app/graphql', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       authorization: authHeader(token),
     },
-    body: JSON.stringify({ query: BOARD_QUERY }),
+    body: JSON.stringify({ query }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
     throw new Error(`Linear API ${res.status}${body ? `: ${body.slice(0, 200)}` : ''}`);
   }
-  const json = (await res.json()) as GqlResponse;
-  return mapResponse(json, now);
+  return (await res.json()) as T;
+}
+
+export async function fetchLinearBoard(token: string, now: number = Date.now()): Promise<RawBoard> {
+  const [projectsRes, issuesRes] = await Promise.all([
+    gql<GqlProjectsResponse>(token, PROJECTS_QUERY),
+    gql<GqlIssuesResponse>(token, ISSUES_QUERY),
+  ]);
+  return mapResponse(projectsRes, issuesRes, now);
 }

@@ -7,7 +7,8 @@ import {
   deriveHealth,
   mapResponse,
   authHeader,
-  type GqlResponse,
+  type GqlProjectsResponse,
+  type GqlIssuesResponse,
 } from './linear';
 
 describe('mapStatus', () => {
@@ -95,7 +96,7 @@ describe('authHeader', () => {
 describe('mapResponse', () => {
   const NOW = Date.parse('2026-09-02T00:00:00Z');
 
-  const res: GqlResponse = {
+  const projectsRes: GqlProjectsResponse = {
     data: {
       projects: {
         nodes: [
@@ -107,63 +108,6 @@ describe('mapResponse', () => {
             targetDate: null,
             status: { type: 'backlog', name: 'Backlog' },
             lead: null,
-            issues: {
-              // Flat list — parents and children together, children carry `parent`.
-              nodes: [
-                {
-                  id: 'DEV-7',
-                  identifier: 'DEV-7',
-                  title: 'Phase 3 — Capacitor wrapper',
-                  priority: 2,
-                  completedAt: null,
-                  state: { type: 'started' },
-                  assignee: { displayName: 'ian' },
-                  parent: null,
-                },
-                {
-                  id: 'DEV-8',
-                  identifier: 'DEV-8',
-                  title: 'Phase 4 — Biometric login',
-                  priority: 0,
-                  completedAt: null,
-                  state: { type: 'backlog' },
-                  assignee: null,
-                  parent: null,
-                },
-                {
-                  id: 'DEV-19',
-                  identifier: 'DEV-19',
-                  title: 'Step 8',
-                  priority: 0,
-                  completedAt: '2026-09-02T05:04:38Z',
-                  state: { type: 'completed' },
-                  assignee: null,
-                  parent: { id: 'DEV-7' },
-                },
-                {
-                  id: 'DEV-23',
-                  identifier: 'DEV-23',
-                  title: 'Step 10',
-                  priority: 0,
-                  completedAt: null,
-                  state: { type: 'backlog' },
-                  assignee: null,
-                  parent: { id: 'DEV-7' },
-                },
-                {
-                  // grandchild — attaches to DEV-23 (a non-top-level issue) and
-                  // must therefore not surface anywhere
-                  id: 'DEV-40',
-                  identifier: 'DEV-40',
-                  title: 'Sub-step',
-                  priority: 0,
-                  completedAt: null,
-                  state: { type: 'backlog' },
-                  assignee: null,
-                  parent: { id: 'DEV-23' },
-                },
-              ],
-            },
           },
           {
             id: 'proj-old',
@@ -173,14 +117,92 @@ describe('mapResponse', () => {
             targetDate: null,
             status: { type: 'completed', name: 'Completed' },
             lead: null,
-            issues: { nodes: [] },
           },
         ],
       },
     },
   };
 
-  const board = mapResponse(res, NOW);
+  // Flat issue list across all projects; each carries `project` and `parent`.
+  const issuesRes: GqlIssuesResponse = {
+    data: {
+      issues: {
+        nodes: [
+          {
+            id: 'DEV-7',
+            identifier: 'DEV-7',
+            title: 'Phase 3 — Capacitor wrapper',
+            priority: 2,
+            completedAt: null,
+            state: { type: 'started' },
+            assignee: { displayName: 'ian' },
+            parent: null,
+            project: { id: 'proj-live' },
+          },
+          {
+            id: 'DEV-8',
+            identifier: 'DEV-8',
+            title: 'Phase 4 — Biometric login',
+            priority: 0,
+            completedAt: null,
+            state: { type: 'backlog' },
+            assignee: null,
+            parent: null,
+            project: { id: 'proj-live' },
+          },
+          {
+            id: 'DEV-19',
+            identifier: 'DEV-19',
+            title: 'Step 8',
+            priority: 0,
+            completedAt: '2026-09-02T05:04:38Z',
+            state: { type: 'completed' },
+            assignee: null,
+            parent: { id: 'DEV-7' },
+            project: { id: 'proj-live' },
+          },
+          {
+            id: 'DEV-23',
+            identifier: 'DEV-23',
+            title: 'Step 10',
+            priority: 0,
+            completedAt: null,
+            state: { type: 'backlog' },
+            assignee: null,
+            parent: { id: 'DEV-7' },
+            project: { id: 'proj-live' },
+          },
+          {
+            // grandchild — attaches to DEV-23 (a non-top-level issue) and
+            // must therefore not surface anywhere
+            id: 'DEV-40',
+            identifier: 'DEV-40',
+            title: 'Sub-step',
+            priority: 0,
+            completedAt: null,
+            state: { type: 'backlog' },
+            assignee: null,
+            parent: { id: 'DEV-23' },
+            project: { id: 'proj-live' },
+          },
+          {
+            // belongs to the hidden project — must not appear
+            id: 'DEV-99',
+            identifier: 'DEV-99',
+            title: 'Old issue',
+            priority: 0,
+            completedAt: null,
+            state: { type: 'backlog' },
+            assignee: null,
+            parent: null,
+            project: { id: 'proj-old' },
+          },
+        ],
+      },
+    },
+  };
+
+  const board = mapResponse(projectsRes, issuesRes, NOW);
 
   it('drops completed/canceled projects', () => {
     expect(board.projects.map((p) => p.id)).toEqual(['proj-live']);
@@ -210,7 +232,17 @@ describe('mapResponse', () => {
     expect(board.projects[0].health).toBe('on_track');
   });
 
-  it('throws on GraphQL errors', () => {
-    expect(() => mapResponse({ errors: [{ message: 'boom' }] })).toThrow('boom');
+  it('excludes issues that belong to a hidden project', () => {
+    const allIds = board.projects.flatMap((p) => p.issues.map((i) => i.id));
+    expect(allIds).not.toContain('DEV-99');
+  });
+
+  it('throws on a GraphQL error in either response', () => {
+    expect(() => mapResponse({ errors: [{ message: 'boom' }] }, { data: { issues: { nodes: [] } } })).toThrow(
+      'boom',
+    );
+    expect(() =>
+      mapResponse({ data: { projects: { nodes: [] } } }, { errors: [{ message: 'kaboom' }] }),
+    ).toThrow('kaboom');
   });
 });
