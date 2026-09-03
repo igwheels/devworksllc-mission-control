@@ -1,5 +1,10 @@
 # Handoff: Mission Control (mc.devworksllc.com)
 
+> **Build status:** the app is implemented — Vite + React SPA on Cloudflare Pages,
+> a Pages Function proxying the Linear GraphQL API, Workers KV poll cache, HTTP
+> Basic Auth. See **[DEVELOPMENT.md](./DEVELOPMENT.md)** for setup, secrets, and
+> the deploy runbook. This file remains the design spec of record.
+
 ## Overview
 "Mission Control" is a visual project-management dashboard for DevWorks LLC's Linear workspace. It shows all active projects at a glance (progress, status breakdown, health) and drills down into a per-project kanban view with issues and sub-tasks. Intended to run on a wall-mounted display and/or a browser tab, refreshing continuously.
 
