@@ -1,0 +1,160 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { SANS } from './theme';
+import { buildBoard, type RawBoard } from './board';
+import { fetchBoard } from './api';
+import { Header } from './components/Header';
+import { ProjectCard } from './components/ProjectCard';
+import { Drilldown } from './components/Drilldown';
+
+const POLL_MS = 20_000;
+
+export default function App() {
+  const [raw, setRaw] = useState<RawBoard | null>(null);
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
+
+  const [now, setNow] = useState(() => Date.now());
+  const [lastSync, setLastSync] = useState(() => Date.now());
+  const [stale, setStale] = useState(false);
+  const [syncError, setSyncError] = useState<string | undefined>(undefined);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const abortRef = useRef<AbortController | null>(null);
+  const hasBoardRef = useRef(false);
+
+  const poll = useCallback(async () => {
+    abortRef.current?.abort();
+    const ac = new AbortController();
+    abortRef.current = ac;
+    try {
+      const { board, stale: isStale, syncError: err } = await fetchBoard(ac.signal);
+      setRaw(board);
+      hasBoardRef.current = true;
+      setStale(isStale);
+      setSyncError(err);
+      setLoadError(null);
+      setLastSync(isStale && board.fetchedAt ? board.fetchedAt : Date.now());
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') return;
+      // Keep whatever board is already on screen; only surface a hard error
+      // if we have never loaded anything.
+      setStale(true);
+      setSyncError((e as Error).message);
+      if (!hasBoardRef.current) setLoadError((e as Error).message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void poll();
+    const id = setInterval(() => void poll(), POLL_MS);
+    return () => {
+      clearInterval(id);
+      abortRef.current?.abort();
+    };
+  }, [poll]);
+
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const board = useMemo(() => (raw ? buildBoard(raw) : null), [raw]);
+
+  const clockStr = new Date(now).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+  const syncedSecs = Math.max(0, Math.floor((now - lastSync) / 1000));
+  const syncedAgo = syncedSecs < 1 ? 'now' : `${syncedSecs}s ago`;
+
+  const selectedProject =
+    board && selectedProjectId
+      ? (board.projects.find((p) => p.id === selectedProjectId) ?? null)
+      : null;
+
+  const selectProject = (id: string) => {
+    setSelectedProjectId(id);
+    setExpandedIssueId(null);
+  };
+  // Return to the overview grid — shared by the drill-down back link and the
+  // "MISSION CONTROL" header home link. A no-op when already on the overview.
+  const goHome = () => {
+    setSelectedProjectId(null);
+    setExpandedIssueId(null);
+  };
+  const toggleIssue = (id: string) => setExpandedIssueId((cur) => (cur === id ? null : id));
+
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        background: '#0B0F14',
+        color: '#E7E9EE',
+        fontFamily: SANS,
+        padding: '28px 36px 40px',
+      }}
+    >
+      <Header
+        stats={board?.headerStats ?? { projectCount: 0, open: 0, inProgress: 0, atRisk: 0 }}
+        syncedAgo={syncedAgo}
+        clockStr={clockStr}
+        stale={stale}
+        onHome={goHome}
+      />
+
+      {stale && board && (
+        <div
+          style={{
+            marginTop: '16px',
+            padding: '8px 14px',
+            borderRadius: '8px',
+            background: 'rgba(242,136,74,.12)',
+            border: '1px solid rgba(242,136,74,.3)',
+            color: '#F2884B',
+            fontSize: '12px',
+          }}
+        >
+          Last known data — sync failed {syncedAgo}
+          {syncError ? ` (${syncError})` : ''}
+        </div>
+      )}
+
+      {!board && !loadError && (
+        <div style={{ marginTop: '40px', color: 'rgba(255,255,255,.4)', fontSize: '13px' }}>
+          Loading Linear data…
+        </div>
+      )}
+
+      {!board && loadError && (
+        <div style={{ marginTop: '40px', color: '#E5484D', fontSize: '13px' }}>
+          Could not load Linear data: {loadError}
+        </div>
+      )}
+
+      {board && !selectedProject && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fill,minmax(300px,1fr))',
+            gap: '16px',
+            marginTop: '22px',
+          }}
+        >
+          {board.projects.map((p) => (
+            <ProjectCard key={p.id} project={p} onOpen={() => selectProject(p.id)} />
+          ))}
+        </div>
+      )}
+
+      {board && selectedProject && (
+        <Drilldown
+          project={selectedProject}
+          onClose={goHome}
+          expandedIssueId={expandedIssueId}
+          onToggleIssue={toggleIssue}
+        />
+      )}
+    </div>
+  );
+}

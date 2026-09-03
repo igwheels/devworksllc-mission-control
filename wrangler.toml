@@ -1,0 +1,17 @@
+name = "devworksllc-mission-control"
+compatibility_date = "2025-09-02"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = "dist"
+
+# Poll cache: collapses every wall display + browser tab down to a handful of
+# Linear API calls per minute. Create the namespace once with:
+#   npx wrangler kv namespace create MC_CACHE
+# then paste the returned id below.
+[[kv_namespaces]]
+binding = "MC_CACHE"
+id = "fb2f90c3993e440086f97b14b3ac3247"
+
+# Secrets (not set here — use `npx wrangler pages secret put <NAME>`):
+#   LINEAR_TOKEN    long-lived OAuth token, `read` scope (see scripts/linear-oauth.mjs)
+#   MC_BASIC_USER   HTTP Basic Auth username for the whole site
+#   MC_BASIC_PASS   HTTP Basic Auth password

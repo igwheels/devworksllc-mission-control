@@ -1,0 +1,8 @@
+# Copy to `.dev.vars` (gitignored) for `wrangler pages dev`.
+
+# Long-lived Linear OAuth token, `read` scope. Get it with: npm run linear:auth
+LINEAR_TOKEN=
+
+# HTTP Basic Auth credentials gating the whole site (app + /api).
+MC_BASIC_USER=devworks
+MC_BASIC_PASS=change-me

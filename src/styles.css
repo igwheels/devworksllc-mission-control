@@ -1,0 +1,73 @@
+/* Lifted from `Mission Control.dc.html` <helmet> block. */
+@keyframes mc-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+@keyframes mc-fadein {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+body {
+  margin: 0;
+  background: #0b0f14;
+}
+* {
+  box-sizing: border-box;
+}
+
+/* Hover states — the reference file expresses these via a `style-hover`
+   attribute; here they are plain CSS on the class names the components set. */
+.mc-card {
+  transition:
+    background 0.15s,
+    border-color 0.15s;
+}
+.mc-card:hover {
+  background: #161d28 !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+.mc-issue:hover {
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+.mc-back {
+  transition: color 0.15s;
+}
+.mc-back:hover {
+  color: rgba(255, 255, 255, 0.85) !important;
+}
+.mc-code {
+  transition: color 0.15s;
+}
+.mc-code:hover {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* "MISSION CONTROL" in the header doubles as a home link back to the overview
+   grid. #4C8DFF is the design's link/accent colour, so a hover tint reads as
+   "clickable" without turning the wordmark into an underlined hyperlink. */
+.mc-home {
+  transition: color 0.15s;
+  border-radius: 3px;
+}
+.mc-home:hover {
+  color: #4c8dff;
+}
+.mc-home:focus {
+  outline: none;
+}
+.mc-home:focus-visible {
+  outline: 2px solid rgba(76, 141, 255, 0.55);
+  outline-offset: 4px;
+}
