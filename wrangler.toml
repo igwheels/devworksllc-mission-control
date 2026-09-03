@@ -9,7 +9,7 @@ pages_build_output_dir = "dist"
 # then paste the returned id below.
 [[kv_namespaces]]
 binding = "MC_CACHE"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "fb2f90c3993e440086f97b14b3ac3247"
 
 # Secrets (not set here — use `npx wrangler pages secret put <NAME>`):
 #   LINEAR_TOKEN    long-lived OAuth token, `read` scope (see scripts/linear-oauth.mjs)
