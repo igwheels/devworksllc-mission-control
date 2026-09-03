@@ -10,6 +10,8 @@ export type Health = 'on_track' | 'at_risk' | 'off_track' | 'done';
 export interface RawSubtask {
   title: string;
   done: boolean;
+  code: string; // Linear identifier, e.g. 'DEV-25'
+  url: string; // link to the issue in Linear ('' when unavailable)
 }
 export interface RawIssue {
   id: string;
@@ -17,6 +19,8 @@ export interface RawIssue {
   status: Status;
   priority: Priority;
   assignee: string;
+  code: string; // Linear identifier, e.g. 'DEV-25'
+  url: string; // link to the issue in Linear ('' when unavailable)
   subtasks: RawSubtask[];
 }
 export interface RawProject {
@@ -66,6 +70,7 @@ export const ISSUES_QUERY = /* GraphQL */ `
       nodes {
         id
         identifier
+        url
         title
         priority
         completedAt
@@ -91,6 +96,7 @@ interface GqlUser {
 interface GqlIssue {
   id: string;
   identifier: string;
+  url: string | null;
   title: string;
   priority: number | null;
   completedAt: string | null;
@@ -251,9 +257,13 @@ export function mapResponse(
           status: mapStatus(i.state?.type),
           priority: mapPriority(i.priority),
           assignee: initials(i.assignee),
+          code: i.identifier,
+          url: i.url ?? '',
           subtasks: (childrenByParent.get(i.id) ?? []).map((c) => ({
             title: c.title,
             done: c.completedAt != null || c.state?.type === 'completed',
+            code: c.identifier,
+            url: c.url ?? '',
           })),
         }));
 

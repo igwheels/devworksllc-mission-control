@@ -19,9 +19,11 @@ const fixture: RawBoard = {
           status: 'done',
           priority: 'none',
           assignee: '',
+          code: 'DEV-5',
+          url: 'https://linear.app/devworks/issue/DEV-5',
           subtasks: [
-            { title: 'a', done: true },
-            { title: 'b', done: true },
+            { title: 'a', done: true, code: 'DEV-51', url: 'https://linear.app/devworks/issue/DEV-51' },
+            { title: 'b', done: true, code: 'DEV-52', url: 'https://linear.app/devworks/issue/DEV-52' },
           ],
         },
         {
@@ -30,9 +32,11 @@ const fixture: RawBoard = {
           status: 'in_progress',
           priority: 'high',
           assignee: 'IA',
+          code: 'DEV-7',
+          url: 'https://linear.app/devworks/issue/DEV-7',
           subtasks: [
-            { title: 'Step 8', done: true },
-            { title: 'Step 10', done: false },
+            { title: 'Step 8', done: true, code: 'DEV-71', url: 'https://linear.app/devworks/issue/DEV-71' },
+            { title: 'Step 10', done: false, code: 'DEV-72', url: '' },
           ],
         },
         {
@@ -41,6 +45,8 @@ const fixture: RawBoard = {
           status: 'backlog',
           priority: 'medium',
           assignee: '',
+          code: 'DEV-8',
+          url: 'https://linear.app/devworks/issue/DEV-8',
           subtasks: [],
         },
         {
@@ -49,6 +55,8 @@ const fixture: RawBoard = {
           status: 'canceled',
           priority: 'low',
           assignee: '',
+          code: 'DEV-99',
+          url: 'https://linear.app/devworks/issue/DEV-99',
           subtasks: [],
         },
       ],
@@ -116,6 +124,14 @@ describe('buildBoard', () => {
     expect([dev7.subtaskDone, dev7.subtaskTotal]).toEqual([1, 2]);
   });
 
+  it('carries the Linear code and url through to the issue and subtask view models', () => {
+    const dev7 = p.columns.find((c) => c.status === 'in_progress')!.issues[0];
+    expect(dev7.code).toBe('DEV-7');
+    expect(dev7.url).toBe('https://linear.app/devworks/issue/DEV-7');
+    expect(dev7.subtasks.map((st) => st.code)).toEqual(['DEV-71', 'DEV-72']);
+    expect(dev7.subtasks[1].url).toBe('');
+  });
+
   it('floors a tiny status share at 4% when a project has many issues', () => {
     const many: RawBoard = {
       fetchedAt: 0,
@@ -129,6 +145,8 @@ describe('buildBoard', () => {
               status: 'done' as const,
               priority: 'none' as const,
               assignee: '',
+              code: `DEV-${i}`,
+              url: '',
               subtasks: [],
             })),
             {
@@ -137,6 +155,8 @@ describe('buildBoard', () => {
               status: 'in_progress' as const,
               priority: 'none' as const,
               assignee: '',
+              code: 'DEV-999',
+              url: '',
               subtasks: [],
             },
           ],

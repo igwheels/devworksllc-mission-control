@@ -1,6 +1,45 @@
 import { MONO } from '../theme';
 import { subtaskStyle, type IssueVM } from '../board';
 
+/** Linear issue code (e.g. `DEV-25`) — dim monospace, links to the issue in
+ *  Linear when a URL is available. Stops click propagation so following the
+ *  link doesn't also toggle the card's sub-task list. */
+function IssueCode({
+  code,
+  url,
+  size = 9.5,
+  marginTop = 0,
+}: {
+  code: string;
+  url: string;
+  size?: number;
+  marginTop?: number;
+}) {
+  if (!code) return null;
+  const style: React.CSSProperties = {
+    fontFamily: MONO,
+    fontSize: `${size}px`,
+    color: 'rgba(255,255,255,.4)',
+    textDecoration: 'none',
+    whiteSpace: 'nowrap',
+    flex: 'none',
+    marginTop: `${marginTop}px`,
+  };
+  if (!url) return <span style={style}>{code}</span>;
+  return (
+    <a
+      className="mc-code"
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      style={style}
+    >
+      {code}
+    </a>
+  );
+}
+
 export function IssueCard({
   issue,
   expanded,
@@ -36,6 +75,7 @@ export function IssueCard({
           >
             {issue.priorityLabel}
           </div>
+          <IssueCode code={issue.code} url={issue.url} marginTop={1} />
           <div style={{ fontSize: '12.5px', lineHeight: 1.35, flex: 1 }}>{issue.title}</div>
         </div>
         <div
@@ -104,6 +144,7 @@ export function IssueCard({
                     flex: 'none',
                   }}
                 />
+                <IssueCode code={st.code} url={st.url} size={9} />
                 <div style={{ textDecoration: s.strike }}>{st.title}</div>
               </div>
             );

@@ -70,7 +70,16 @@ describe('deriveHealth', () => {
 
   it('off_track when past target with open work', () => {
     const issues = [
-      { id: 'a', title: 'x', status: 'in_progress' as const, priority: 'none' as const, assignee: '', subtasks: [] },
+      {
+        id: 'a',
+        title: 'x',
+        status: 'in_progress' as const,
+        priority: 'none' as const,
+        assignee: '',
+        code: 'DEV-1',
+        url: '',
+        subtasks: [],
+      },
     ];
     expect(deriveHealth(null, '2026-08-01', 40, issues, NOW).health).toBe('off_track');
   });
@@ -131,6 +140,7 @@ describe('mapResponse', () => {
           {
             id: 'DEV-7',
             identifier: 'DEV-7',
+            url: 'https://linear.app/devworks/issue/DEV-7',
             title: 'Phase 3 — Capacitor wrapper',
             priority: 2,
             completedAt: null,
@@ -142,6 +152,7 @@ describe('mapResponse', () => {
           {
             id: 'DEV-8',
             identifier: 'DEV-8',
+            url: 'https://linear.app/devworks/issue/DEV-8',
             title: 'Phase 4 — Biometric login',
             priority: 0,
             completedAt: null,
@@ -153,6 +164,7 @@ describe('mapResponse', () => {
           {
             id: 'DEV-19',
             identifier: 'DEV-19',
+            url: 'https://linear.app/devworks/issue/DEV-19',
             title: 'Step 8',
             priority: 0,
             completedAt: '2026-09-02T05:04:38Z',
@@ -164,6 +176,7 @@ describe('mapResponse', () => {
           {
             id: 'DEV-23',
             identifier: 'DEV-23',
+            url: 'https://linear.app/devworks/issue/DEV-23',
             title: 'Step 10',
             priority: 0,
             completedAt: null,
@@ -177,6 +190,7 @@ describe('mapResponse', () => {
             // must therefore not surface anywhere
             id: 'DEV-40',
             identifier: 'DEV-40',
+            url: 'https://linear.app/devworks/issue/DEV-40',
             title: 'Sub-step',
             priority: 0,
             completedAt: null,
@@ -189,6 +203,7 @@ describe('mapResponse', () => {
             // belongs to the hidden project — must not appear
             id: 'DEV-99',
             identifier: 'DEV-99',
+            url: 'https://linear.app/devworks/issue/DEV-99',
             title: 'Old issue',
             priority: 0,
             completedAt: null,
@@ -218,9 +233,52 @@ describe('mapResponse', () => {
     expect(dev7.priority).toBe('high');
     expect(dev7.assignee).toBe('IA');
     expect(dev7.subtasks).toEqual([
-      { title: 'Step 8', done: true },
-      { title: 'Step 10', done: false },
+      {
+        title: 'Step 8',
+        done: true,
+        code: 'DEV-19',
+        url: 'https://linear.app/devworks/issue/DEV-19',
+      },
+      {
+        title: 'Step 10',
+        done: false,
+        code: 'DEV-23',
+        url: 'https://linear.app/devworks/issue/DEV-23',
+      },
     ]);
+  });
+
+  it('carries the Linear identifier and url onto issues and subtasks', () => {
+    const dev7 = board.projects[0].issues[0];
+    expect(dev7.code).toBe('DEV-7');
+    expect(dev7.url).toBe('https://linear.app/devworks/issue/DEV-7');
+    expect(dev7.subtasks[0].code).toBe('DEV-19');
+    expect(dev7.subtasks[0].url).toBe('https://linear.app/devworks/issue/DEV-19');
+  });
+
+  it('falls back to an empty url when Linear omits it', () => {
+    const res: GqlIssuesResponse = {
+      data: {
+        issues: {
+          nodes: [
+            {
+              id: 'x1',
+              identifier: 'DEV-1',
+              url: null,
+              title: 'No url',
+              priority: 0,
+              completedAt: null,
+              state: { type: 'backlog' },
+              assignee: null,
+              parent: null,
+              project: { id: 'proj-live' },
+            },
+          ],
+        },
+      },
+    };
+    const b = mapResponse(projectsRes, res, NOW);
+    expect(b.projects[0].issues[0]).toMatchObject({ code: 'DEV-1', url: '' });
   });
 
   it('uses Linear project.progress when present', () => {

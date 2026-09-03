@@ -47,3 +47,9 @@ body {
 .mc-back:hover {
   color: rgba(255, 255, 255, 0.85) !important;
 }
+.mc-code {
+  transition: color 0.15s;
+}
+.mc-code:hover {
+  color: rgba(255, 255, 255, 0.75) !important;
+}

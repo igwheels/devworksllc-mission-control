@@ -18,6 +18,8 @@ import {
 export interface RawSubtask {
   title: string;
   done: boolean;
+  code: string; // Linear identifier, e.g. 'DEV-25'
+  url: string; // link to the issue in Linear ('' when unavailable)
 }
 export interface RawIssue {
   id: string;
@@ -25,6 +27,8 @@ export interface RawIssue {
   status: Status;
   priority: Priority;
   assignee: string; // initials, '' when unassigned
+  code: string; // Linear identifier, e.g. 'DEV-25'
+  url: string; // link to the issue in Linear ('' when unavailable)
   subtasks: RawSubtask[];
 }
 export interface RawProject {
@@ -57,10 +61,14 @@ export interface LegendEntry {
 export interface SubtaskVM {
   title: string;
   done: boolean;
+  code: string;
+  url: string;
 }
 export interface IssueVM {
   id: string;
   title: string;
+  code: string;
+  url: string;
   priorityLabel: string;
   priorityColor: string;
   assignee: string;
@@ -145,13 +153,20 @@ function buildProject(raw: RawProject, index: number, projectCount: number): Pro
         return {
           id: iss.id,
           title: iss.title,
+          code: iss.code,
+          url: iss.url,
           priorityLabel: pmeta.label,
           priorityColor: pmeta.color,
           assignee: iss.assignee,
           hasSubtasks: subtaskTotal > 0,
           subtaskDone,
           subtaskTotal,
-          subtasks: iss.subtasks.map((st) => ({ title: st.title, done: st.done })),
+          subtasks: iss.subtasks.map((st) => ({
+            title: st.title,
+            done: st.done,
+            code: st.code,
+            url: st.url,
+          })),
         };
       }),
   }));
