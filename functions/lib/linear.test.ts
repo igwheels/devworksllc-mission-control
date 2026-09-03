@@ -108,42 +108,59 @@ describe('mapResponse', () => {
             status: { type: 'backlog', name: 'Backlog' },
             lead: null,
             issues: {
+              // Flat list — parents and children together, children carry `parent`.
               nodes: [
                 {
                   id: 'DEV-7',
                   identifier: 'DEV-7',
                   title: 'Phase 3 — Capacitor wrapper',
                   priority: 2,
+                  completedAt: null,
                   state: { type: 'started' },
                   assignee: { displayName: 'ian' },
                   parent: null,
-                  children: {
-                    nodes: [
-                      { id: 'DEV-19', title: 'Step 8', completedAt: '2026-09-02T05:04:38Z', state: { type: 'completed' } },
-                      { id: 'DEV-23', title: 'Step 10', completedAt: null, state: { type: 'backlog' } },
-                    ],
-                  },
                 },
                 {
                   id: 'DEV-8',
                   identifier: 'DEV-8',
                   title: 'Phase 4 — Biometric login',
                   priority: 0,
+                  completedAt: null,
                   state: { type: 'backlog' },
                   assignee: null,
                   parent: null,
-                  children: { nodes: [] },
                 },
                 {
-                  // child issue — must NOT appear as its own kanban card
-                  id: 'DEV-25',
-                  identifier: 'DEV-25',
-                  title: 'Step 12',
+                  id: 'DEV-19',
+                  identifier: 'DEV-19',
+                  title: 'Step 8',
                   priority: 0,
+                  completedAt: '2026-09-02T05:04:38Z',
                   state: { type: 'completed' },
                   assignee: null,
                   parent: { id: 'DEV-7' },
-                  children: { nodes: [] },
+                },
+                {
+                  id: 'DEV-23',
+                  identifier: 'DEV-23',
+                  title: 'Step 10',
+                  priority: 0,
+                  completedAt: null,
+                  state: { type: 'backlog' },
+                  assignee: null,
+                  parent: { id: 'DEV-7' },
+                },
+                {
+                  // grandchild — attaches to DEV-23 (a non-top-level issue) and
+                  // must therefore not surface anywhere
+                  id: 'DEV-40',
+                  identifier: 'DEV-40',
+                  title: 'Sub-step',
+                  priority: 0,
+                  completedAt: null,
+                  state: { type: 'backlog' },
+                  assignee: null,
+                  parent: { id: 'DEV-23' },
                 },
               ],
             },

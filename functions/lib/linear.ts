@@ -38,9 +38,14 @@ export interface RawBoard {
 
 // ---- GraphQL --------------------------------------------------------------
 
+// Kept deliberately shallow: Linear enforces a GraphQL complexity budget, and a
+// nested `children` connection multiplies cost (projects x issues x children).
+// Sub-issues are themselves issues in the same project, so we fetch every issue
+// flat (parents and children alike) with a `parent` ref and rebuild the tree in
+// `mapResponse`. Cost is then just projects x issues.
 export const BOARD_QUERY = /* GraphQL */ `
   query MissionControl {
-    projects(first: 50) {
+    projects(first: 20) {
       nodes {
         id
         name
@@ -49,23 +54,16 @@ export const BOARD_QUERY = /* GraphQL */ `
         targetDate
         status { type name }
         lead { displayName name }
-        issues(first: 250) {
+        issues(first: 200) {
           nodes {
             id
             identifier
             title
             priority
+            completedAt
             state { type name }
             assignee { displayName name }
             parent { id }
-            children(first: 100) {
-              nodes {
-                id
-                title
-                completedAt
-                state { type }
-              }
-            }
           }
         }
       }
@@ -83,21 +81,15 @@ interface GqlUser {
   displayName?: string | null;
   name?: string | null;
 }
-interface GqlChild {
-  id: string;
-  title: string;
-  completedAt: string | null;
-  state: GqlState | null;
-}
 interface GqlIssue {
   id: string;
   identifier: string;
   title: string;
   priority: number | null;
+  completedAt: string | null;
   state: GqlState | null;
   assignee: GqlUser | null;
   parent: { id: string } | null;
-  children: { nodes: GqlChild[] } | null;
 }
 interface GqlProject {
   id: string;
@@ -210,8 +202,19 @@ export function mapResponse(res: GqlResponse, now: number = Date.now()): RawBoar
     .map((p) => {
       const allIssues = p.issues?.nodes ?? [];
 
+      // Rebuild the parent -> direct-children map from the flat list.
+      const childrenByParent = new Map<string, GqlIssue[]>();
+      for (const i of allIssues) {
+        const pid = i.parent?.id;
+        if (!pid) continue;
+        const arr = childrenByParent.get(pid);
+        if (arr) arr.push(i);
+        else childrenByParent.set(pid, [i]);
+      }
+
       // Kanban cards = top-level issues; their direct children become the
-      // sub-task checkboxes. Deeper nesting is intentionally collapsed.
+      // sub-task checkboxes. Deeper nesting is intentionally collapsed
+      // (a grandchild attaches to its own parent, which is never rendered).
       const issues: RawIssue[] = allIssues
         .filter((i) => !i.parent)
         .map((i) => ({
@@ -220,7 +223,7 @@ export function mapResponse(res: GqlResponse, now: number = Date.now()): RawBoar
           status: mapStatus(i.state?.type),
           priority: mapPriority(i.priority),
           assignee: initials(i.assignee),
-          subtasks: (i.children?.nodes ?? []).map((c) => ({
+          subtasks: (childrenByParent.get(i.id) ?? []).map((c) => ({
             title: c.title,
             done: c.completedAt != null || c.state?.type === 'completed',
           })),
