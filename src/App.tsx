@@ -6,7 +6,10 @@ import { Header } from './components/Header';
 import { ProjectCard } from './components/ProjectCard';
 import { Drilldown } from './components/Drilldown';
 
-const POLL_MS = 20_000;
+// Kept under the server's SOFT_TTL_MS (functions/api/board.ts) so a lone
+// client's repeat polls land inside the cache window instead of forcing a
+// live Linear fetch + KV write every time (DEV-66).
+const POLL_MS = 60_000;
 
 export default function App() {
   const [raw, setRaw] = useState<RawBoard | null>(null);
