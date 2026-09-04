@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SANS } from './theme';
 import { buildBoard, type RawBoard } from './board';
-import { fetchBoard } from './api';
+import { fetchBoard, describeLoadError, type LoadErrorInfo } from './api';
 import { Header } from './components/Header';
 import { ProjectCard } from './components/ProjectCard';
 import { Drilldown } from './components/Drilldown';
+import { BoardSkeleton } from './components/BoardSkeleton';
+import { LoadError } from './components/LoadError';
 
 // Kept under the server's SOFT_TTL_MS (functions/api/board.ts) so a lone
 // client's repeat polls land inside the cache window instead of forcing a
@@ -33,7 +35,7 @@ export default function App() {
   const [lastSync, setLastSync] = useState(() => Date.now());
   const [stale, setStale] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>(undefined);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
 
   const abortRef = useRef<AbortController | null>(null);
   const hasBoardRef = useRef(false);
@@ -60,7 +62,7 @@ export default function App() {
       // if we have never loaded anything.
       setStale(true);
       setSyncError((e as Error).message);
-      if (!hasBoardRef.current) setLoadError((e as Error).message);
+      if (!hasBoardRef.current) setLoadError(describeLoadError(e));
       consecutiveFailuresRef.current += 1;
     }
     timeoutRef.current = setTimeout(() => void poll(), nextPollDelay(consecutiveFailuresRef.current));
@@ -141,17 +143,9 @@ export default function App() {
         </div>
       )}
 
-      {!board && !loadError && (
-        <div style={{ marginTop: '40px', color: 'rgba(255,255,255,.4)', fontSize: '13px' }}>
-          Loading Linear data…
-        </div>
-      )}
+      {!board && !loadError && <BoardSkeleton />}
 
-      {!board && loadError && (
-        <div style={{ marginTop: '40px', color: '#E5484D', fontSize: '13px' }}>
-          Could not load Linear data: {loadError}
-        </div>
-      )}
+      {!board && loadError && <LoadError error={loadError} />}
 
       {board && !selectedProject && (
         <div
