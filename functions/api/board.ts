@@ -7,9 +7,16 @@ interface Env {
 
 const CACHE_KEY = 'board';
 // Serve the cached board without touching Linear for this long after a fetch.
-const SOFT_TTL_MS = 15_000;
-// KV hard expiry (KV minimum is 60s).
-const HARD_TTL_S = 60;
+// Must stay >= the client's poll interval (src/App.tsx POLL_MS) — otherwise a
+// single client's own polls always land past this window and every poll turns
+// into a live Linear fetch + KV write, defeating the cache entirely (DEV-66).
+const SOFT_TTL_MS = 110_000;
+// KV hard expiry (KV minimum is 60s). This is the real floor on write volume:
+// once an entry physically expires, a miss is forced regardless of the soft
+// TTL above, so a single always-on poller writes at least once per HARD_TTL_S.
+// 120s keeps that floor (~720 writes/day) under the KV free plan's 1,000/day
+// write cap; 60s alone floors at ~1,440/day, which blows through it (DEV-66).
+const HARD_TTL_S = 120;
 
 const json = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
