@@ -92,6 +92,60 @@ npm run build && wrangler pages deploy`. Requires repo secrets
 
 Manual: `npm run deploy`.
 
+## Linear token: rotation & expiry runbook
+
+`LINEAR_TOKEN` authenticates every `/api/board` fetch. `authHeader()` in
+`functions/lib/linear.ts` accepts either credential type:
+
+| Credential | Prefix | Expires? | Sent as | Mint via |
+| --- | --- | --- | --- | --- |
+| **Personal API key** (preferred for this unattended display) | `lin_api_` | No | raw value | Linear → Settings → Security & access → Personal API keys → **New API key** (scope: read) |
+| OAuth access token | `lin_oauth_` | **Yes** — `linear:auth` currently returns ~24h tokens and the app has no refresh logic | `Bearer <token>` | `npm run linear:auth` (see One-time setup) |
+
+Use a **personal API key**. The OAuth path (`scripts/linear-oauth.mjs`) is kept
+only for the app-actor case; a `lin_oauth_` token in production will silently
+expire and take the board down.
+
+### Symptom of a dead/expired token
+
+`GET /api/board` returns **503** `{"error":"Linear sync failed and no cached
+board is available: Linear API 401: ..."}` once the KV cache (60s) also lapses.
+A still-warm cache shows `200` with `"stale": true` and a `syncError` string.
+Confirm the token itself:
+
+```sh
+curl -sS -X POST https://api.linear.app/graphql \
+  -H "authorization: <token>" -H 'content-type: application/json' \
+  -d '{"query":"{ viewer { name } }"}'
+```
+
+`401 AUTHENTICATION_ERROR` → rotate. (`lin_api_` keys go in the header verbatim;
+`lin_oauth_` tokens need `authorization: Bearer <token>`.)
+
+### Rotate
+
+```sh
+# 1. Mint a new lin_api_ key in the Linear UI (label it, e.g. mission-control-dashboard).
+
+# 2. Local:
+#    edit .dev.vars -> LINEAR_TOKEN=lin_api_...
+npm run pages:dev
+curl -sS -u "$MC_BASIC_USER:$MC_BASIC_PASS" http://localhost:8788/api/board | head -c 200
+
+# 3. Production:
+printf '%s' 'lin_api_...' | npx wrangler pages secret put LINEAR_TOKEN
+npm run deploy            # Pages binds secrets at deploy time — a redeploy is required
+
+# 4. Verify prod, then revoke the old credential:
+#    - personal API key: delete it in the Linear UI
+#    - OAuth token:  curl -sS -X POST https://api.linear.app/oauth/revoke \
+#                      -H "authorization: Bearer lin_oauth_..."
+#    - or delete the whole OAuth app if nothing else uses it
+```
+
+First successful fetch re-warms `MC_CACHE`, so later Linear blips degrade to
+`stale` rather than 503.
+
 ## Data model notes
 
 - **Card = a Linear project.** One today ("Student Driver Log"); the grid grows
