@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import {
   mapStatus,
   mapPriority,
@@ -7,6 +7,8 @@ import {
   deriveHealth,
   mapResponse,
   authHeader,
+  fetchLinearBoard,
+  MAX_PAGES,
   type GqlProjectsResponse,
   type GqlIssuesResponse,
 } from './linear';
@@ -302,5 +304,137 @@ describe('mapResponse', () => {
     expect(() =>
       mapResponse({ data: { projects: { nodes: [] } } }, { errors: [{ message: 'kaboom' }] }),
     ).toThrow('kaboom');
+  });
+});
+
+describe('fetchLinearBoard pagination', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  type FetchCall = [string, { body: string }];
+
+  function isProjectsCall(call: FetchCall): boolean {
+    return JSON.parse(call[1].body).query.includes('MissionControlProjects');
+  }
+
+  /** Queues per-connection page responses and routes each `fetch` call to the
+   * right queue by inspecting the query text — same trick used to keep the
+   * two real connections independent in production. */
+  function mockFetch(pages: { projectPages: GqlProjectsResponse[]; issuePages: GqlIssuesResponse[] }) {
+    let projectCall = 0;
+    let issueCall = 0;
+    const fetchMock = vi.fn(async (_url: string, init: { body: string }) => {
+      const call: FetchCall = [_url, init];
+      const page = isProjectsCall(call) ? pages.projectPages[projectCall++] : pages.issuePages[issueCall++];
+      if (!page) throw new Error('mock fetch called more times than pages were queued for it');
+      return { ok: true, json: async () => page } as unknown as Response;
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    return fetchMock;
+  }
+
+  const project = (id: string) => ({
+    id,
+    name: id,
+    progress: null,
+    health: null,
+    targetDate: null,
+    status: { type: 'started' },
+    lead: null,
+  });
+  const issue = (id: string, projectId: string) => ({
+    id,
+    identifier: id,
+    url: null,
+    title: id,
+    priority: 0,
+    completedAt: null,
+    state: { type: 'backlog' },
+    assignee: null,
+    parent: null,
+    project: { id: projectId },
+  });
+
+  it('single page each: unchanged behavior from before pagination existed', async () => {
+    mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [project('p1')] } } }],
+      issuePages: [{ data: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [issue('i1', 'p1')] } } }],
+    });
+
+    const board = await fetchLinearBoard('token', Date.parse('2026-09-05T00:00:00Z'));
+    expect(board.projects.map((p) => p.id)).toEqual(['p1']);
+    expect(board.projects[0].issues.map((i) => i.id)).toEqual(['i1']);
+  });
+
+  it('follows cursors across multiple pages and merges every page', async () => {
+    mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [project('p1')] } } }],
+      issuePages: [
+        { data: { issues: { pageInfo: { hasNextPage: true, endCursor: 'cursor-1' }, nodes: [issue('i1', 'p1')] } } },
+        { data: { issues: { pageInfo: { hasNextPage: true, endCursor: 'cursor-2' }, nodes: [issue('i2', 'p1')] } } },
+        { data: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [issue('i3', 'p1')] } } },
+      ],
+    });
+
+    const board = await fetchLinearBoard('token');
+    expect(board.projects[0].issues.map((i) => i.id).sort()).toEqual(['i1', 'i2', 'i3']);
+  });
+
+  it("passes the previous page's endCursor as the next page's `after` variable", async () => {
+    const fetchMock = mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }],
+      issuePages: [
+        { data: { issues: { pageInfo: { hasNextPage: true, endCursor: 'abc' }, nodes: [] } } },
+        { data: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } },
+      ],
+    });
+
+    await fetchLinearBoard('token');
+
+    const issueCalls = fetchMock.mock.calls.filter((c) => !isProjectsCall(c as FetchCall));
+    expect(JSON.parse((issueCalls[0][1] as { body: string }).body).variables).toEqual({ after: undefined });
+    expect(JSON.parse((issueCalls[1][1] as { body: string }).body).variables).toEqual({ after: 'abc' });
+  });
+
+  it('handles an empty workspace (zero projects, zero issues) without erroring', async () => {
+    mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }],
+      issuePages: [{ data: { issues: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }],
+    });
+    const board = await fetchLinearBoard('token');
+    expect(board.projects).toEqual([]);
+  });
+
+  it('throws rather than returning a partial board if a later page errors', async () => {
+    mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }],
+      issuePages: [
+        { data: { issues: { pageInfo: { hasNextPage: true, endCursor: 'abc' }, nodes: [issue('i1', 'p1')] } } },
+        { errors: [{ message: 'Linear had a bad day' }] },
+      ],
+    });
+    await expect(fetchLinearBoard('token')).rejects.toThrow('Linear had a bad day');
+  });
+
+  it('throws instead of looping forever if a connection never reports hasNextPage: false', async () => {
+    const issuePages: GqlIssuesResponse[] = Array.from({ length: MAX_PAGES }, () => ({
+      data: { issues: { pageInfo: { hasNextPage: true, endCursor: 'always-more' }, nodes: [] } },
+    }));
+    const fetchMock = mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }],
+      issuePages,
+    });
+
+    await expect(fetchLinearBoard('token')).rejects.toThrow(/capped at 20 pages/);
+    expect(fetchMock.mock.calls.filter((c) => !isProjectsCall(c as FetchCall))).toHaveLength(MAX_PAGES);
+  });
+
+  it('throws if Linear reports another page but omits the cursor to fetch it', async () => {
+    mockFetch({
+      projectPages: [{ data: { projects: { pageInfo: { hasNextPage: false, endCursor: null }, nodes: [] } } }],
+      issuePages: [{ data: { issues: { pageInfo: { hasNextPage: true, endCursor: null }, nodes: [] } } }],
+    });
+    await expect(fetchLinearBoard('token')).rejects.toThrow(/returned no cursor/);
   });
 });
