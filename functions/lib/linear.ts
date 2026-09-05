@@ -43,14 +43,22 @@ export interface RawBoard {
 // ---- GraphQL --------------------------------------------------------------
 
 // Linear enforces a GraphQL complexity budget (~10k). A single query that nests
-// projects -> issues (let alone -> children) multiplies past it, so we run two
-// flat queries and stitch them in `mapResponse`:
+// projects -> issues (let alone -> children) multiplies past it — two earlier
+// fixes (see git history on this file) already hit that wall and backed out
+// of it — so we run two flat queries and stitch them in `mapResponse`:
 //   1. projects  — scalar fields only, no nested issues
 //   2. issues    — every project-attached issue flat, each carrying `project`
 //                  and `parent` refs; the parent/child tree is rebuilt locally.
+// Both are flat top-level connections, so `pageInfo`/`after` below add
+// negligible complexity (~1) per page — they don't reintroduce the nesting
+// that caused the original "query too complex" errors. Page sizes (50 / 250)
+// are unchanged from the last fix, which measured their per-page cost at
+// ~450 / ~1500 — comfortably under the cap with room to spare; DEV-58 is
+// about *paging past* a page, not about changing what fits in one.
 export const PROJECTS_QUERY = /* GraphQL */ `
-  query MissionControlProjects {
-    projects(first: 50) {
+  query MissionControlProjects($after: String) {
+    projects(first: 50, after: $after) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         id
         name
@@ -65,8 +73,9 @@ export const PROJECTS_QUERY = /* GraphQL */ `
 `;
 
 export const ISSUES_QUERY = /* GraphQL */ `
-  query MissionControlIssues {
-    issues(first: 250, filter: { project: { null: false } }) {
+  query MissionControlIssues($after: String) {
+    issues(first: 250, after: $after, filter: { project: { null: false } }) {
+      pageInfo { hasNextPage endCursor }
       nodes {
         id
         identifier
@@ -82,6 +91,19 @@ export const ISSUES_QUERY = /* GraphQL */ `
     }
   }
 `;
+
+// Hard ceiling on how many pages either connection will follow in one poll.
+// This bounds two things the KV-write-budget work made us pay attention to:
+// wall-clock latency (each page is a sequential round-trip to Linear, since
+// a cursor isn't known until the previous page returns) and outbound
+// subrequest count (a Workers-plan limit, not just a cost concern). At 50
+// projects / 250 issues per page, 20 pages is up to 1,000 projects or 5,000
+// issues — far beyond anything this workspace is near, while still capping a
+// pathological workspace at ~20 sequential Linear round-trips instead of an
+// unbounded fan-out. If a workspace ever genuinely exceeds this, fetchAllNodes
+// throws rather than quietly returning a truncated page-20 board — the same
+// "fail visibly" call made for the KV cache.
+export const MAX_PAGES = 20;
 
 // ---- Raw response shapes (only the fields we ask for) --------------------
 
@@ -114,12 +136,16 @@ interface GqlProject {
   status: GqlState | null;
   lead: GqlUser | null;
 }
+interface GqlPageInfo {
+  hasNextPage: boolean;
+  endCursor: string | null;
+}
 export interface GqlProjectsResponse {
-  data?: { projects?: { nodes: GqlProject[] } };
+  data?: { projects?: { nodes: GqlProject[]; pageInfo?: GqlPageInfo } };
   errors?: Array<{ message: string }>;
 }
 export interface GqlIssuesResponse {
-  data?: { issues?: { nodes: GqlIssue[] } };
+  data?: { issues?: { nodes: GqlIssue[]; pageInfo?: GqlPageInfo } };
   errors?: Array<{ message: string }>;
 }
 
@@ -307,14 +333,14 @@ export function authHeader(token: string): string {
   return `Bearer ${t}`;
 }
 
-async function gql<T>(token: string, query: string): Promise<T> {
+async function gql<T>(token: string, query: string, variables?: Record<string, unknown>): Promise<T> {
   const res = await fetch('https://api.linear.app/graphql', {
     method: 'POST',
     headers: {
       'content-type': 'application/json',
       authorization: authHeader(token),
     },
-    body: JSON.stringify({ query }),
+    body: JSON.stringify({ query, variables }),
   });
   if (!res.ok) {
     const body = await res.text().catch(() => '');
@@ -323,10 +349,54 @@ async function gql<T>(token: string, query: string): Promise<T> {
   return (await res.json()) as T;
 }
 
+/**
+ * Follows a Relay-style cursor connection to completion, running requests
+ * strictly in sequence (a page's cursor isn't known until the previous page
+ * returns). Throws — rather than returning whatever was fetched so far — on
+ * a GraphQL error partway through, or if the connection still reports more
+ * pages after MAX_PAGES: a board silently missing the tail end of a
+ * workspace is worse than one visible sync failure (DEV-58), matching the
+ * same call made for the KV cache in functions/api/board.ts.
+ */
+async function fetchAllNodes<TNode, TResponse extends { errors?: Array<{ message: string }> }>(
+  token: string,
+  query: string,
+  resourceName: string,
+  getConnection: (res: TResponse) => { nodes: TNode[]; pageInfo?: GqlPageInfo } | undefined,
+): Promise<TNode[]> {
+  const nodes: TNode[] = [];
+  let after: string | undefined;
+
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await gql<TResponse>(token, query, { after });
+    if (res.errors?.length) {
+      throw new Error(res.errors.map((e) => e.message).join('; '));
+    }
+    const connection = getConnection(res);
+    nodes.push(...(connection?.nodes ?? []));
+
+    const pageInfo = connection?.pageInfo;
+    if (!pageInfo?.hasNextPage) return nodes;
+    if (!pageInfo.endCursor) {
+      throw new Error(`Linear reported more ${resourceName} but returned no cursor to continue paging.`);
+    }
+    after = pageInfo.endCursor;
+  }
+
+  throw new Error(
+    `Linear has more ${resourceName} than this dashboard will page through (capped at ${MAX_PAGES} pages) — refusing to render a silently truncated board.`,
+  );
+}
+
 export async function fetchLinearBoard(token: string, now: number = Date.now()): Promise<RawBoard> {
-  const [projectsRes, issuesRes] = await Promise.all([
-    gql<GqlProjectsResponse>(token, PROJECTS_QUERY),
-    gql<GqlIssuesResponse>(token, ISSUES_QUERY),
+  const [projectNodes, issueNodes] = await Promise.all([
+    fetchAllNodes<GqlProject, GqlProjectsResponse>(
+      token,
+      PROJECTS_QUERY,
+      'projects',
+      (res) => res.data?.projects,
+    ),
+    fetchAllNodes<GqlIssue, GqlIssuesResponse>(token, ISSUES_QUERY, 'issues', (res) => res.data?.issues),
   ]);
-  return mapResponse(projectsRes, issuesRes, now);
+  return mapResponse({ data: { projects: { nodes: projectNodes } } }, { data: { issues: { nodes: issueNodes } } }, now);
 }
