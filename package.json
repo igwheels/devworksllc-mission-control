@@ -12,7 +12,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "linear:auth": "node scripts/linear-oauth.mjs",
-    "logo:derive": "node scripts/derive-logo.mjs"
+    "logo:derive": "node scripts/derive-logo.mjs",
+    "icons:derive": "node scripts/derive-app-icons.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

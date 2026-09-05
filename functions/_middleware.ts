@@ -44,6 +44,18 @@ function parseBasic(header: string | null): { user: string; pass: string } | nul
 }
 
 export const onRequest: PagesFunction<Env> = async ({ request, env, next }) => {
+  // The browser's own internal fetches for the service-worker script and the
+  // web app manifest don't carry the page's cached Basic Auth credential —
+  // tested directly against this gate, not assumed: both come back 401,
+  // which breaks SW registration ("error occurred when fetching the script")
+  // and silently drops manifest processing (so the install prompt never
+  // fires and the manifest's icons never even get requested). Neither file
+  // has anything sensitive in it, so both are exempted rather than trying to
+  // smuggle credentials into browser APIs that have no way to accept them
+  // (DEV-69).
+  const path = new URL(request.url).pathname;
+  if (path === '/sw.js' || path === '/manifest.webmanifest') return next();
+
   const expectedUser = env.MC_BASIC_USER;
   const expectedPass = env.MC_BASIC_PASS;
 
