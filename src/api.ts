@@ -47,12 +47,18 @@ export interface LoadErrorInfo {
  * display — "Linear is down" and "this screen's credentials are broken" call
  * for different reactions than a raw error string does.
  */
+/** True for a response that means "your session is gone," as opposed to
+ * Linear or the server itself being unhappy. */
+export function isAuthError(e: unknown): boolean {
+  return e instanceof BoardFetchError && (e.status === 401 || e.status === 403);
+}
+
 export function describeLoadError(e: unknown): LoadErrorInfo {
   if (e instanceof BoardFetchError) {
     if (e.status === 401 || e.status === 403) {
       return {
-        headline: 'Access denied',
-        detail: "This screen's credentials were rejected — check the site's Basic Auth setup.",
+        headline: 'Not signed in',
+        detail: "This screen's session has expired or was never established — signing in again.",
       };
     }
     if (e.status === 500) {

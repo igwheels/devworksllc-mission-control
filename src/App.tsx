@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { SANS } from './theme';
 import { buildBoard, type RawBoard } from './board';
-import { fetchBoard, describeLoadError, type LoadErrorInfo } from './api';
+import { fetchBoard, describeLoadError, isAuthError, type LoadErrorInfo } from './api';
 import { Header } from './components/Header';
 import { ProjectCard } from './components/ProjectCard';
 import { Drilldown } from './components/Drilldown';
@@ -58,6 +58,15 @@ export default function App() {
       consecutiveFailuresRef.current = isStale ? consecutiveFailuresRef.current + 1 : 0;
     } catch (e) {
       if ((e as Error).name === 'AbortError') return; // unmounting — don't reschedule
+      if (isAuthError(e)) {
+        // A session that's expired or was never established won't fix
+        // itself by retrying with backoff. Force a real navigation so the
+        // middleware's redirect to /login.html actually shows on an
+        // unattended screen, rather than the display quietly sitting on
+        // stale data behind a small banner nobody's there to read (DEV-68).
+        window.location.reload();
+        return;
+      }
       // Keep whatever board is already on screen; only surface a hard error
       // if we have never loaded anything.
       setStale(true);
