@@ -26,6 +26,32 @@ function nextPollDelay(consecutiveFailures: number): number {
   return Math.min(POLL_MS * 2 ** consecutiveFailures, MAX_BACKOFF_MS);
 }
 
+const INCLUDE_INACTIVE_KEY = 'mc_include_inactive';
+
+/** Reads the persisted "Include Inactive" setting (DEV-77), per-browser via
+ *  localStorage. Defensively defaults to false — today's behavior — for
+ *  anything that isn't the exact string this app itself writes: missing,
+ *  corrupted, or from a shape a future version might use instead. A garbage
+ *  stored value should never be able to do more than silently fall back to
+ *  the default; it should never throw or half-apply. */
+function loadIncludeInactive(): boolean {
+  try {
+    return localStorage.getItem(INCLUDE_INACTIVE_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+function saveIncludeInactive(value: boolean): void {
+  try {
+    localStorage.setItem(INCLUDE_INACTIVE_KEY, value ? 'true' : 'false');
+  } catch {
+    // Storage unavailable (private browsing, quota, disabled) — the toggle
+    // still works for this session, it just won't persist. Not worth
+    // surfacing on a wall display no one's watching for this.
+  }
+}
+
 export default function App() {
   const [raw, setRaw] = useState<RawBoard | null>(null);
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -36,6 +62,7 @@ export default function App() {
   const [stale, setStale] = useState(false);
   const [syncError, setSyncError] = useState<string | undefined>(undefined);
   const [loadError, setLoadError] = useState<LoadErrorInfo | null>(null);
+  const [includeInactive, setIncludeInactive] = useState(loadIncludeInactive);
 
   const abortRef = useRef<AbortController | null>(null);
   const hasBoardRef = useRef(false);
@@ -90,7 +117,11 @@ export default function App() {
     return () => clearInterval(id);
   }, []);
 
-  const board = useMemo(() => (raw ? buildBoard(raw) : null), [raw]);
+  useEffect(() => {
+    saveIncludeInactive(includeInactive);
+  }, [includeInactive]);
+
+  const board = useMemo(() => (raw ? buildBoard(raw, { includeInactive }) : null), [raw, includeInactive]);
 
   const clockStr = new Date(now).toLocaleTimeString([], {
     hour: '2-digit',
@@ -128,11 +159,15 @@ export default function App() {
       }}
     >
       <Header
-        stats={board?.headerStats ?? { projectCount: 0, open: 0, inProgress: 0, atRisk: 0 }}
+        stats={
+          board?.headerStats ?? { visibleCount: 0, activeCount: 0, inactiveCount: 0, open: 0, inProgress: 0, atRisk: 0 }
+        }
         syncedAgo={syncedAgo}
         clockStr={clockStr}
         stale={stale}
         onHome={goHome}
+        includeInactive={includeInactive}
+        onToggleIncludeInactive={() => setIncludeInactive((v) => !v)}
       />
 
       {stale && board && (

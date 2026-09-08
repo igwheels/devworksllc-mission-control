@@ -1,4 +1,4 @@
-import { MONO } from '../theme';
+import { MONO, GRAY2 } from '../theme';
 import type { ProjectVM } from '../board';
 
 export function ProjectCard({ project, onOpen }: { project: ProjectVM; onOpen: () => void }) {
@@ -37,6 +37,29 @@ export function ProjectCard({ project, onOpen }: { project: ProjectVM; onOpen: (
         >
           {project.name}
         </div>
+        {/* Shown only via "Include Inactive" (DEV-77) — a completed/canceled
+            project's own health badge can otherwise read misleadingly (it
+            wasn't designed with inactive projects in mind), so this is a
+            separate, unambiguous cue that the project isn't actually being
+            tracked anymore. Not something the issue's decisions explicitly
+            called for; added because showing inactive projects with zero
+            visual distinction from active ones seemed hard to make sense of. */}
+        {!project.active && (
+          <div
+            style={{
+              fontSize: '10px',
+              fontWeight: 600,
+              letterSpacing: '.04em',
+              padding: '3px 8px',
+              borderRadius: '20px',
+              background: 'rgba(139,146,165,.14)',
+              color: GRAY2,
+              flex: 'none',
+            }}
+          >
+            INACTIVE
+          </div>
+        )}
         <div
           style={{
             fontSize: '10px',
