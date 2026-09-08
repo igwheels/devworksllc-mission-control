@@ -32,14 +32,12 @@ export interface RawProject {
   target: string;
   progressPct: number;
   issues: RawIssue[];
-  /** False for Linear's completed projects (DEV-77). These used to be
-   *  dropped entirely before the board left the server; now every non-
-   *  canceled project is included and tagged, so the client can filter by
-   *  the "Include Inactive" toggle without a second server round trip.
-   *  Canceled projects are still dropped outright — they must never appear
-   *  regardless of toggle state (follow-up to DEV-77), so there's no reason
-   *  to ship them to the client at all. */
-  active: boolean;
+  // No `active`/status field here on purpose (DEV-79): whether a project is
+  // active is derived client-side from `issues` (src/board.ts's
+  // isProjectActive), not sourced from Linear's own project status field —
+  // that field takes no part in the determination at all, in either
+  // direction, by design. Canceled projects are still dropped outright
+  // below; that's a separate, unrelated mechanism (follow-up to DEV-77).
 }
 export interface RawBoard {
   fetchedAt: number;
@@ -240,16 +238,17 @@ export function deriveHealth(
 
 // ---- Top-level mapper --------------------------------------------------
 
-// completed and canceled are NOT the same thing for "Include Inactive"
-// (follow-up to DEV-77): a completed project is tagged `active: false` and
-// stays in the payload — the toggle needs it there to show it at all, and
-// the board is served from one shared KV cache read by every viewer
-// (DEV-66/DEV-58), so it can't be fetched differently per viewer's toggle
-// state. A canceled project is dropped entirely, same as before DEV-77 —
-// it must never appear regardless of toggle state, so there's no reason to
-// ship it to the client at all.
+// Canceled projects are dropped entirely, same as every project was before
+// DEV-77 — they must never appear regardless of "Include Inactive" toggle
+// state, so there's no reason to ship them to the client at all. Completed
+// projects, by contrast, stay in the payload: whether a project counts as
+// active is now derived client-side from its issues (src/board.ts's
+// isProjectActive, DEV-79), not from this field, so the client needs a
+// completed project's issues to make that call — dropping it here would
+// break that. (Filtering here rather than by "active" also means the
+// server doesn't need to compute an active/inactive concept at all
+// anymore — that job moved to the client entirely.)
 const CANCELED_PROJECT_STATE = 'canceled';
-const COMPLETED_PROJECT_STATE = 'completed';
 
 export function mapResponse(
   projectsRes: GqlProjectsResponse,
@@ -330,7 +329,6 @@ export function mapResponse(
       target: formatTarget(p.targetDate),
       progressPct,
       issues,
-      active: p.status?.type !== COMPLETED_PROJECT_STATE,
     };
   });
 

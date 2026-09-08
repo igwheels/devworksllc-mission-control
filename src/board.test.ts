@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { buildBoard, dotColor, subtaskStyle, subtaskProgress, type RawBoard } from './board';
+import {
+  buildBoard,
+  dotColor,
+  subtaskStyle,
+  subtaskProgress,
+  isProjectActive,
+  type RawBoard,
+  type RawIssue,
+} from './board';
 import { GREEN, YELLOW, RED } from './theme';
 
 const fixture: RawBoard = {
@@ -13,7 +21,6 @@ const fixture: RawBoard = {
       lead: '',
       target: '',
       progressPct: 17.4,
-      active: true,
       issues: [
         {
           id: 'DEV-5',
@@ -176,13 +183,87 @@ describe('buildBoard', () => {
   });
 });
 
-describe('buildBoard "Include Inactive" filtering (DEV-77)', () => {
+describe('isProjectActive — derived precedence over Linear\'s own status (DEV-79)', () => {
+  // isProjectActive takes only `issues` — no status/active field of any kind
+  // — which is the precedence decision made structural rather than a rule to
+  // remember: there is nothing here for a Linear-reported project status to
+  // override, in either direction.
+  const issueWith = (status: RawIssue['status']): RawIssue => ({
+    id: status,
+    title: status,
+    status,
+    priority: 'none',
+    assignee: '',
+    code: '',
+    url: '',
+    subtasks: [],
+  });
+
+  it('is active with no issues at all — nothing to be "100% complete" of', () => {
+    expect(isProjectActive([])).toBe(true);
+  });
+
+  it('is active the moment any non-canceled issue is not done', () => {
+    expect(isProjectActive([issueWith('done'), issueWith('backlog')])).toBe(true);
+    expect(isProjectActive([issueWith('todo')])).toBe(true);
+    expect(isProjectActive([issueWith('in_progress')])).toBe(true);
+  });
+
+  it('is inactive once every non-canceled issue is done', () => {
+    expect(isProjectActive([issueWith('done')])).toBe(false);
+    expect(isProjectActive([issueWith('done'), issueWith('done')])).toBe(false);
+  });
+
+  it('canceled issues count toward neither side, same as the existing progressPct exclusion', () => {
+    // Everything real is done, the rest canceled -> inactive.
+    expect(isProjectActive([issueWith('done'), issueWith('canceled')])).toBe(false);
+    // Nothing real was ever done, only canceled -> same as zero real issues -> active.
+    expect(isProjectActive([issueWith('canceled'), issueWith('canceled')])).toBe(true);
+  });
+});
+
+describe('buildBoard "Include Inactive" filtering (DEV-77 / DEV-79)', () => {
+  const openIssues: RawIssue[] = [
+    { id: 'o1', title: 'open work', status: 'in_progress', priority: 'none', assignee: '', code: '', url: '', subtasks: [] },
+  ];
+  const allDoneIssues: RawIssue[] = [
+    { id: 'd1', title: 'done work', status: 'done', priority: 'none', assignee: '', code: '', url: '', subtasks: [] },
+    { id: 'd2', title: 'more done work', status: 'done', priority: 'none', assignee: '', code: '', url: '', subtasks: [] },
+  ];
+
   const mixed: RawBoard = {
     fetchedAt: 0,
     projects: [
-      { ...fixture.projects[0], id: 'active-1', name: 'Active One', active: true },
-      { ...fixture.projects[0], id: 'inactive-1', name: 'Inactive One', active: false },
-      { ...fixture.projects[0], id: 'inactive-2', name: 'Inactive Two', active: false },
+      {
+        id: 'active-1',
+        name: 'Active One',
+        health: 'on_track',
+        healthSource: 'derived',
+        lead: '',
+        target: '',
+        progressPct: 0,
+        issues: openIssues,
+      },
+      {
+        id: 'inactive-1',
+        name: 'Inactive One',
+        health: 'done',
+        healthSource: 'derived',
+        lead: '',
+        target: '',
+        progressPct: 100,
+        issues: allDoneIssues,
+      },
+      {
+        id: 'inactive-2',
+        name: 'Inactive Two',
+        health: 'done',
+        healthSource: 'derived',
+        lead: '',
+        target: '',
+        progressPct: 100,
+        issues: allDoneIssues,
+      },
     ],
   };
 
@@ -210,10 +291,12 @@ describe('buildBoard "Include Inactive" filtering (DEV-77)', () => {
   it('stats (open/inProgress/atRisk) reflect only what is currently visible', () => {
     const activeOnly = buildBoard(mixed).headerStats;
     const union = buildBoard(mixed, { includeInactive: true }).headerStats;
-    // Each fixture project contributes the same open/inProgress counts, so
-    // including 2 more projects should scale open/inProgress accordingly.
-    expect(union.open).toBe(activeOnly.open * 3);
-    expect(union.inProgress).toBe(activeOnly.inProgress * 3);
+    // The two inactive projects have no open/in-progress issues at all (by
+    // construction — that's what makes them inactive), so including them
+    // shouldn't change these counts at all, only the completed ones' own
+    // (zero) contribution.
+    expect(union.open).toBe(activeOnly.open);
+    expect(union.inProgress).toBe(activeOnly.inProgress);
   });
 });
 
@@ -260,7 +343,6 @@ describe('buildBoard progress color/label wiring', () => {
           lead: '',
           target: '',
           progressPct: 0,
-          active: true,
           issues: [
             {
               id: 'complete',

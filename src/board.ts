@@ -42,10 +42,13 @@ export interface RawProject {
   target: string; // e.g. 'Oct 12', '' when no target date
   progressPct: number; // 0..100, authoritative (from Linear or server-computed)
   issues: RawIssue[];
-  /** False for Linear's completed projects (DEV-77). Canceled projects never
-   *  reach the client at all — they're dropped server-side and must never
-   *  appear regardless of "Include Inactive" (follow-up to DEV-77). */
-  active: boolean;
+  // No `active`/status field here on purpose (DEV-79): whether a project
+  // counts as active is derived client-side from `issues` by
+  // isProjectActive below, not sourced from Linear's own project status.
+  // Canceled projects still never reach the client at all — they're
+  // dropped server-side in functions/lib/linear.ts and must never appear
+  // regardless of "Include Inactive" (follow-up to DEV-77) — that's a
+  // separate mechanism, untouched by this.
 }
 export interface RawBoard {
   fetchedAt: number; // epoch ms
@@ -107,11 +110,15 @@ export interface ProjectVM {
   legend: LegendEntry[];
   totalIssues: number;
   columns: ColumnVM[];
-  /** False for a completed project shown via "Include Inactive" (DEV-77) —
-   *  used to badge it, since its health badge alone can be misleading for a
-   *  project that isn't actually being tracked anymore. Canceled projects
-   *  never reach this far — the server drops them outright (follow-up to
-   *  DEV-77), so `active: false` here always specifically means completed. */
+  /** False when isProjectActive(raw.issues) says every non-canceled issue is
+   *  done (DEV-79) — used to badge the project and to filter it behind
+   *  "Include Inactive" (DEV-77). This is derived from actual issue state,
+   *  not from Linear's own project status field, and that's deliberate: the
+   *  derived signal takes precedence in both directions — a project reads
+   *  active the moment any issue is open, even if Linear's status still
+   *  says Completed, and reads inactive the moment everything's done, even
+   *  if Linear's status still says In Progress. Open work should be visible
+   *  regardless of whether anyone remembered to update the status field. */
   active: boolean;
 }
 export interface HeaderStats {
@@ -145,6 +152,29 @@ function countByStatus(issues: RawIssue[]): Record<Status, number> {
 export function dotColor(index: number, projectCount: number): string {
   const hue = Math.round(index * (360 / Math.max(1, projectCount)));
   return `oklch(0.7 0.15 ${hue}deg)`;
+}
+
+/**
+ * Whether a project counts as active (DEV-79). Derived purely from its
+ * issues — this function has no way to see Linear's own project status
+ * field at all, which is the precedence decision made structural rather
+ * than a rule to remember: the derived signal is the only signal, in both
+ * directions.
+ *
+ * - Zero issues (after excluding canceled ones): active. "100% complete"
+ *   implies there was something to complete; an empty or entirely-canceled
+ *   project is unstarted/abandoned, not finished. Matches the existing
+ *   progressPct precedent, which also treats an empty counted list as 0%.
+ * - Any non-canceled issue not Done: active. Open work needs to stay
+ *   visible and get addressed, regardless of what Linear's status field
+ *   says about the project as a whole.
+ * - Every non-canceled issue Done: inactive.
+ * - Canceled issues count toward neither side — same exclusion
+ *   progressPct already applies.
+ */
+export function isProjectActive(issues: RawIssue[]): boolean {
+  const counted = issues.filter((i) => i.status !== 'canceled');
+  return counted.length === 0 || counted.some((i) => i.status !== 'done');
 }
 
 export type SubtaskProgress = 'complete' | 'partial' | 'none';
@@ -248,7 +278,7 @@ function buildProject(raw: RawProject, index: number, projectCount: number): Pro
     legend,
     totalIssues: raw.issues.length,
     columns,
-    active: raw.active,
+    active: isProjectActive(raw.issues),
   };
 }
 
@@ -260,7 +290,7 @@ export interface BuildBoardOptions {
 }
 
 export function buildBoard(raw: RawBoard, opts: BuildBoardOptions = {}): Board {
-  const activeRaw = raw.projects.filter((p) => p.active);
+  const activeRaw = raw.projects.filter((p) => isProjectActive(p.issues));
   const inactiveCount = raw.projects.length - activeRaw.length;
   // Stats reflect what's actually visible on screen right now, same as
   // before this option existed for the (still-default) active-only case.
