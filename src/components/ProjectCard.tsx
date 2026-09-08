@@ -44,9 +44,29 @@ export function ProjectCard({ project, onOpen }: { project: ProjectVM; onOpen: (
             anymore. Says COMPLETED rather than the earlier INACTIVE: a
             canceled project is dropped server-side and can never reach this
             component (follow-up to DEV-77), so "inactive" here only ever
-            means completed — COMPLETED is the more precise word for it. */}
+            means completed — COMPLETED is the more precise word for it.
+
+            As of DEV-79, `active` (and so this badge) is derived from the
+            project's own issues, not from Linear's project-status field — a
+            project can show COMPLETED here while Linear's own status still
+            says something else entirely (e.g. In Progress, never manually
+            updated), by design: open work stays visible regardless of that
+            field, and this badge is the flip side of the same rule. The
+            title tooltip spells out the actual basis so that isn't left
+            implicit.
+
+            Deliberately no separate "Linear disagrees" cue for the reverse
+            case (Linear's status says Completed but this project still has
+            open issues, so it shows active/no badge here): the wire payload
+            doesn't even carry Linear's raw project status anymore (removed
+            entirely, DEV-79) precisely because it's no longer authoritative
+            for this. Surfacing a mismatch would mean re-forwarding a field
+            we've just decided not to trust for this purpose, and would read
+            as something to reconcile on a read-only wall display that has
+            no way to act on it. */}
         {!project.active && (
           <div
+            title="Every issue in this project is done"
             style={{
               fontSize: '10px',
               fontWeight: 600,

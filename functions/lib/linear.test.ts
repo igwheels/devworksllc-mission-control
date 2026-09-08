@@ -244,10 +244,13 @@ describe('mapResponse', () => {
 
   const board = mapResponse(projectsRes, issuesRes, NOW);
 
-  it('tags a completed project as inactive rather than dropping it (DEV-77)', () => {
+  it('keeps a completed project in the payload rather than dropping it (DEV-77)', () => {
+    // Whether it counts as active/inactive is derived client-side from its
+    // issues (src/board.ts's isProjectActive, DEV-79) — mapResponse no
+    // longer computes or carries an active/status field at all, so there's
+    // nothing to assert about that here; only that the project (and its
+    // issues, checked separately below) actually made it into the payload.
     expect(board.projects.map((p) => p.id)).toEqual(['proj-live', 'proj-old']);
-    expect(board.projects.find((p) => p.id === 'proj-live')?.active).toBe(true);
-    expect(board.projects.find((p) => p.id === 'proj-old')?.active).toBe(false);
   });
 
   it('drops a canceled project outright — never tagged, never included (follow-up to DEV-77)', () => {
