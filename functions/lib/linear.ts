@@ -32,10 +32,13 @@ export interface RawProject {
   target: string;
   progressPct: number;
   issues: RawIssue[];
-  /** False for Linear's completed/canceled projects (DEV-77). These used to
-   *  be dropped entirely before the board left the server; now every project
-   *  is included and tagged, so the client can filter by the "Include
-   *  Inactive" toggle without a second server round trip. */
+  /** False for Linear's completed projects (DEV-77). These used to be
+   *  dropped entirely before the board left the server; now every non-
+   *  canceled project is included and tagged, so the client can filter by
+   *  the "Include Inactive" toggle without a second server round trip.
+   *  Canceled projects are still dropped outright — they must never appear
+   *  regardless of toggle state (follow-up to DEV-77), so there's no reason
+   *  to ship them to the client at all. */
   active: boolean;
 }
 export interface RawBoard {
@@ -237,12 +240,16 @@ export function deriveHealth(
 
 // ---- Top-level mapper --------------------------------------------------
 
-// Projects in these Linear states are tagged `active: false` rather than
-// dropped (DEV-77) — the "Include Inactive" toggle needs them in the payload
-// to show them at all, and the board is served from one shared KV cache read
-// by every viewer (DEV-66/DEV-58), so they can't be fetched differently per
-// viewer's toggle state.
-const HIDDEN_PROJECT_STATES = new Set(['completed', 'canceled']);
+// completed and canceled are NOT the same thing for "Include Inactive"
+// (follow-up to DEV-77): a completed project is tagged `active: false` and
+// stays in the payload — the toggle needs it there to show it at all, and
+// the board is served from one shared KV cache read by every viewer
+// (DEV-66/DEV-58), so it can't be fetched differently per viewer's toggle
+// state. A canceled project is dropped entirely, same as before DEV-77 —
+// it must never appear regardless of toggle state, so there's no reason to
+// ship it to the client at all.
+const CANCELED_PROJECT_STATE = 'canceled';
+const COMPLETED_PROJECT_STATE = 'completed';
 
 export function mapResponse(
   projectsRes: GqlProjectsResponse,
@@ -267,7 +274,9 @@ export function mapResponse(
     else issuesByProject.set(pid, [i]);
   }
 
-  const projects: RawProject[] = projectNodes.map((p) => {
+  const projects: RawProject[] = projectNodes
+    .filter((p) => p.status?.type !== CANCELED_PROJECT_STATE)
+    .map((p) => {
     const allIssues = issuesByProject.get(p.id) ?? [];
 
     // Rebuild the parent -> direct-children map from the flat list.
@@ -321,7 +330,7 @@ export function mapResponse(
       target: formatTarget(p.targetDate),
       progressPct,
       issues,
-      active: !HIDDEN_PROJECT_STATES.has(p.status?.type ?? ''),
+      active: p.status?.type !== COMPLETED_PROJECT_STATE,
     };
   });
 

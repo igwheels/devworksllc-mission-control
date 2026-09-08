@@ -71,3 +71,15 @@ body {
   outline: 2px solid rgba(76, 141, 255, 0.55);
   outline-offset: 4px;
 }
+
+/* "Include Inactive" switch (DEV-77 follow-up) — same focus-visible
+   treatment as .mc-home, so the whole header's custom controls read as one
+   consistent set of keyboard targets. */
+.mc-switch:focus {
+  outline: none;
+}
+.mc-switch:focus-visible {
+  outline: 2px solid rgba(76, 141, 255, 0.55);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
