@@ -42,6 +42,8 @@ export interface RawProject {
   target: string; // e.g. 'Oct 12', '' when no target date
   progressPct: number; // 0..100, authoritative (from Linear or server-computed)
   issues: RawIssue[];
+  /** False for Linear's completed/canceled projects (DEV-77). */
+  active: boolean;
 }
 export interface RawBoard {
   fetchedAt: number; // epoch ms
@@ -103,9 +105,17 @@ export interface ProjectVM {
   legend: LegendEntry[];
   totalIssues: number;
   columns: ColumnVM[];
+  /** False for an inactive (completed/canceled) project shown via "Include
+   *  Inactive" (DEV-77) — used to badge it, since its health badge alone can
+   *  be misleading for a project that isn't actually being tracked anymore. */
+  active: boolean;
 }
 export interface HeaderStats {
-  projectCount: number;
+  /** Projects visible with the current "Include Inactive" setting — what's
+   *  actually rendered in the grid right now. */
+  visibleCount: number;
+  activeCount: number;
+  inactiveCount: number;
   open: number;
   inProgress: number;
   atRisk: number;
@@ -234,17 +244,31 @@ function buildProject(raw: RawProject, index: number, projectCount: number): Pro
     legend,
     totalIssues: raw.issues.length,
     columns,
+    active: raw.active,
   };
 }
 
-export function buildBoard(raw: RawBoard): Board {
-  const projectCount = raw.projects.length;
-  const projects = raw.projects.map((p, i) => buildProject(p, i, projectCount));
+export interface BuildBoardOptions {
+  /** "Include Inactive" (DEV-77). Off (default) shows active projects only,
+   *  matching behavior before this option existed. On shows active +
+   *  inactive together — a union, not a swap to inactive-only. */
+  includeInactive?: boolean;
+}
+
+export function buildBoard(raw: RawBoard, opts: BuildBoardOptions = {}): Board {
+  const activeRaw = raw.projects.filter((p) => p.active);
+  const inactiveCount = raw.projects.length - activeRaw.length;
+  // Stats reflect what's actually visible on screen right now, same as
+  // before this option existed for the (still-default) active-only case.
+  const visibleRaw = opts.includeInactive ? raw.projects : activeRaw;
+
+  const visibleCount = visibleRaw.length;
+  const projects = visibleRaw.map((p, i) => buildProject(p, i, visibleCount));
 
   let open = 0;
   let inProgress = 0;
   let atRisk = 0;
-  for (const p of raw.projects) {
+  for (const p of visibleRaw) {
     for (const iss of p.issues) {
       if (iss.status !== 'done' && iss.status !== 'canceled') open++;
       if (iss.status === 'in_progress') inProgress++;
@@ -254,7 +278,7 @@ export function buildBoard(raw: RawBoard): Board {
 
   return {
     projects,
-    headerStats: { projectCount, open, inProgress, atRisk },
+    headerStats: { visibleCount, activeCount: activeRaw.length, inactiveCount, open, inProgress, atRisk },
   };
 }
 

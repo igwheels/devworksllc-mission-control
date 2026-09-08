@@ -13,6 +13,7 @@ const fixture: RawBoard = {
       lead: '',
       target: '',
       progressPct: 17.4,
+      active: true,
       issues: [
         {
           id: 'DEV-5',
@@ -87,7 +88,9 @@ describe('buildBoard', () => {
   it('computes header stats over top-level issues + project health', () => {
     // open = not done/canceled => DEV-7, DEV-8
     expect(board.headerStats).toEqual({
-      projectCount: 1,
+      visibleCount: 1,
+      activeCount: 1,
+      inactiveCount: 0,
       open: 2,
       inProgress: 1,
       atRisk: 0,
@@ -173,6 +176,47 @@ describe('buildBoard', () => {
   });
 });
 
+describe('buildBoard "Include Inactive" filtering (DEV-77)', () => {
+  const mixed: RawBoard = {
+    fetchedAt: 0,
+    projects: [
+      { ...fixture.projects[0], id: 'active-1', name: 'Active One', active: true },
+      { ...fixture.projects[0], id: 'inactive-1', name: 'Inactive One', active: false },
+      { ...fixture.projects[0], id: 'inactive-2', name: 'Inactive Two', active: false },
+    ],
+  };
+
+  it('defaults to active-only (off), matching pre-DEV-77 behavior', () => {
+    const board = buildBoard(mixed);
+    expect(board.projects.map((p) => p.id)).toEqual(['active-1']);
+    expect(board.projects[0].active).toBe(true);
+    expect(board.headerStats).toMatchObject({ visibleCount: 1, activeCount: 1, inactiveCount: 2 });
+  });
+
+  it('explicit includeInactive: false is the same as the default', () => {
+    const board = buildBoard(mixed, { includeInactive: false });
+    expect(board.projects.map((p) => p.id)).toEqual(['active-1']);
+  });
+
+  it('includeInactive: true shows the union — active AND inactive together, not a swap', () => {
+    const board = buildBoard(mixed, { includeInactive: true });
+    expect(board.projects.map((p) => p.id).sort()).toEqual(['active-1', 'inactive-1', 'inactive-2']);
+    expect(board.projects.find((p) => p.id === 'inactive-1')?.active).toBe(false);
+    // activeCount/inactiveCount describe the whole board regardless of what's
+    // currently visible, so the header can show "N active, M inactive".
+    expect(board.headerStats).toMatchObject({ visibleCount: 3, activeCount: 1, inactiveCount: 2 });
+  });
+
+  it('stats (open/inProgress/atRisk) reflect only what is currently visible', () => {
+    const activeOnly = buildBoard(mixed).headerStats;
+    const union = buildBoard(mixed, { includeInactive: true }).headerStats;
+    // Each fixture project contributes the same open/inProgress counts, so
+    // including 2 more projects should scale open/inProgress accordingly.
+    expect(union.open).toBe(activeOnly.open * 3);
+    expect(union.inProgress).toBe(activeOnly.inProgress * 3);
+  });
+});
+
 describe('subtaskStyle', () => {
   it('strikes and dims done rows', () => {
     expect(subtaskStyle(true)).toMatchObject({ strike: 'line-through' });
@@ -216,6 +260,7 @@ describe('buildBoard progress color/label wiring', () => {
           lead: '',
           target: '',
           progressPct: 0,
+          active: true,
           issues: [
             {
               id: 'complete',

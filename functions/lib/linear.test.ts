@@ -221,8 +221,10 @@ describe('mapResponse', () => {
 
   const board = mapResponse(projectsRes, issuesRes, NOW);
 
-  it('drops completed/canceled projects', () => {
-    expect(board.projects.map((p) => p.id)).toEqual(['proj-live']);
+  it('tags completed/canceled projects as inactive rather than dropping them (DEV-77)', () => {
+    expect(board.projects.map((p) => p.id)).toEqual(['proj-live', 'proj-old']);
+    expect(board.projects.find((p) => p.id === 'proj-live')?.active).toBe(true);
+    expect(board.projects.find((p) => p.id === 'proj-old')?.active).toBe(false);
   });
 
   it('keeps only top-level issues as kanban cards', () => {
@@ -292,9 +294,9 @@ describe('mapResponse', () => {
     expect(board.projects[0].health).toBe('on_track');
   });
 
-  it('excludes issues that belong to a hidden project', () => {
-    const allIds = board.projects.flatMap((p) => p.issues.map((i) => i.id));
-    expect(allIds).not.toContain('DEV-99');
+  it('still includes issues belonging to an inactive project (DEV-77)', () => {
+    const oldProject = board.projects.find((p) => p.id === 'proj-old');
+    expect(oldProject?.issues.map((i) => i.id)).toEqual(['DEV-99']);
   });
 
   it('throws on a GraphQL error in either response', () => {

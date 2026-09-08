@@ -32,6 +32,11 @@ export interface RawProject {
   target: string;
   progressPct: number;
   issues: RawIssue[];
+  /** False for Linear's completed/canceled projects (DEV-77). These used to
+   *  be dropped entirely before the board left the server; now every project
+   *  is included and tagged, so the client can filter by the "Include
+   *  Inactive" toggle without a second server round trip. */
+  active: boolean;
 }
 export interface RawBoard {
   fetchedAt: number;
@@ -232,6 +237,11 @@ export function deriveHealth(
 
 // ---- Top-level mapper --------------------------------------------------
 
+// Projects in these Linear states are tagged `active: false` rather than
+// dropped (DEV-77) — the "Include Inactive" toggle needs them in the payload
+// to show them at all, and the board is served from one shared KV cache read
+// by every viewer (DEV-66/DEV-58), so they can't be fetched differently per
+// viewer's toggle state.
 const HIDDEN_PROJECT_STATES = new Set(['completed', 'canceled']);
 
 export function mapResponse(
@@ -257,64 +267,63 @@ export function mapResponse(
     else issuesByProject.set(pid, [i]);
   }
 
-  const projects: RawProject[] = projectNodes
-    .filter((p) => !HIDDEN_PROJECT_STATES.has(p.status?.type ?? ''))
-    .map((p) => {
-      const allIssues = issuesByProject.get(p.id) ?? [];
+  const projects: RawProject[] = projectNodes.map((p) => {
+    const allIssues = issuesByProject.get(p.id) ?? [];
 
-      // Rebuild the parent -> direct-children map from the flat list.
-      const childrenByParent = new Map<string, GqlIssue[]>();
-      for (const i of allIssues) {
-        const pid = i.parent?.id;
-        if (!pid) continue;
-        const arr = childrenByParent.get(pid);
-        if (arr) arr.push(i);
-        else childrenByParent.set(pid, [i]);
-      }
+    // Rebuild the parent -> direct-children map from the flat list.
+    const childrenByParent = new Map<string, GqlIssue[]>();
+    for (const i of allIssues) {
+      const pid = i.parent?.id;
+      if (!pid) continue;
+      const arr = childrenByParent.get(pid);
+      if (arr) arr.push(i);
+      else childrenByParent.set(pid, [i]);
+    }
 
-      // Kanban cards = top-level issues; their direct children become the
-      // sub-task checkboxes. Deeper nesting is intentionally collapsed
-      // (a grandchild attaches to its own parent, which is never rendered).
-      const issues: RawIssue[] = allIssues
-        .filter((i) => !i.parent)
-        .map((i) => ({
-          id: i.id,
-          title: i.title,
-          status: mapStatus(i.state?.type),
-          priority: mapPriority(i.priority),
-          assignee: initials(i.assignee),
-          code: i.identifier,
-          url: i.url ?? '',
-          subtasks: (childrenByParent.get(i.id) ?? []).map((c) => ({
-            title: c.title,
-            done: c.completedAt != null || c.state?.type === 'completed',
-            code: c.identifier,
-            url: c.url ?? '',
-          })),
-        }));
+    // Kanban cards = top-level issues; their direct children become the
+    // sub-task checkboxes. Deeper nesting is intentionally collapsed
+    // (a grandchild attaches to its own parent, which is never rendered).
+    const issues: RawIssue[] = allIssues
+      .filter((i) => !i.parent)
+      .map((i) => ({
+        id: i.id,
+        title: i.title,
+        status: mapStatus(i.state?.type),
+        priority: mapPriority(i.priority),
+        assignee: initials(i.assignee),
+        code: i.identifier,
+        url: i.url ?? '',
+        subtasks: (childrenByParent.get(i.id) ?? []).map((c) => ({
+          title: c.title,
+          done: c.completedAt != null || c.state?.type === 'completed',
+          code: c.identifier,
+          url: c.url ?? '',
+        })),
+      }));
 
-      const counted = issues.filter((i) => i.status !== 'canceled');
-      const done = counted.filter((i) => i.status === 'done').length;
-      const progressPct =
-        p.progress != null
-          ? Math.round(p.progress * 100)
-          : counted.length
-            ? Math.round((done / counted.length) * 100)
-            : 0;
+    const counted = issues.filter((i) => i.status !== 'canceled');
+    const done = counted.filter((i) => i.status === 'done').length;
+    const progressPct =
+      p.progress != null
+        ? Math.round(p.progress * 100)
+        : counted.length
+          ? Math.round((done / counted.length) * 100)
+          : 0;
 
-      const { health, source } = deriveHealth(p.health, p.targetDate, progressPct, issues, now);
+    const { health, source } = deriveHealth(p.health, p.targetDate, progressPct, issues, now);
 
-      return {
-        id: p.id,
-        name: p.name,
-        health,
-        healthSource: source,
-        lead: initials(p.lead),
-        target: formatTarget(p.targetDate),
-        progressPct,
-        issues,
-      };
-    });
+    return {
+      id: p.id,
+      name: p.name,
+      health,
+      healthSource: source,
+      lead: initials(p.lead),
+      target: formatTarget(p.targetDate),
+      progressPct,
+      issues,
+      active: !HIDDEN_PROJECT_STATES.has(p.status?.type ?? ''),
+    };
+  });
 
   return { fetchedAt: now, projects };
 }

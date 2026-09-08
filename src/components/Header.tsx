@@ -19,6 +19,8 @@ export function Header({
   clockStr,
   stale,
   onHome,
+  includeInactive,
+  onToggleIncludeInactive,
 }: {
   stats: HeaderStats;
   syncedAgo: string;
@@ -26,6 +28,10 @@ export function Header({
   stale: boolean;
   /** Return to the overview grid. A no-op when already there. */
   onHome: () => void;
+  /** "Include Inactive" (DEV-77) — off shows active projects only, on shows
+   *  active + inactive together. */
+  includeInactive: boolean;
+  onToggleIncludeInactive: () => void;
 }) {
   return (
     <div
@@ -82,8 +88,39 @@ export function Header({
               DevWorks LLC
             </div>
           </div>
-          <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)', marginTop: '4px' }}>
-            {stats.projectCount} active {stats.projectCount === 1 ? 'project' : 'projects'}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '14px',
+              marginTop: '4px',
+            }}
+          >
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,.4)' }}>
+              {stats.activeCount} active {stats.activeCount === 1 ? 'project' : 'projects'}
+              {includeInactive && stats.inactiveCount > 0
+                ? `, ${stats.inactiveCount} inactive`
+                : ''}
+            </div>
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '11px',
+                color: 'rgba(255,255,255,.4)',
+                cursor: 'pointer',
+              }}
+              title="Show completed and canceled projects alongside active ones"
+            >
+              <input
+                type="checkbox"
+                checked={includeInactive}
+                onChange={onToggleIncludeInactive}
+                style={{ cursor: 'pointer' }}
+              />
+              Include Inactive
+            </label>
           </div>
         </div>
       </div>
