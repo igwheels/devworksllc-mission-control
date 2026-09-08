@@ -9,6 +9,12 @@ export const RED = '#E5484D';
 export const PURPLE = '#B98CE8';
 export const GRAY = '#5B6270';
 export const GRAY2 = '#8B92A5';
+// New for the sub-task progress indicator (DEV-78) — ORANGE already carries a
+// distinct meaning elsewhere (AT RISK health, the stale-sync dot), so reusing
+// it for "partial progress" would overload one color with two unrelated
+// meanings on the same screen. A dedicated amber/gold keeps the three-way
+// green/yellow/red reading unambiguous at a glance.
+export const YELLOW = '#E8B23D';
 
 export const BG = '#0B0F14';
 export const TEXT = '#E7E9EE';

@@ -8,6 +8,8 @@ import {
   HEALTH_META,
   PRIORITY_META,
   GREEN,
+  YELLOW,
+  RED,
   type Status,
   type Priority,
   type Health,
@@ -76,6 +78,12 @@ export interface IssueVM {
   subtaskDone: number;
   subtaskTotal: number;
   subtasks: SubtaskVM[];
+  /** Sub-task completion color for the avatar circle (DEV-78). */
+  progressColor: string;
+  /** Non-color explanation of the same signal — a tooltip today, but kept as
+   *  a distinct field so the circle isn't color-only encoding (see
+   *  subtaskProgress below). */
+  progressLabel: string;
 }
 export interface ColumnVM {
   status: Status;
@@ -125,6 +133,45 @@ export function dotColor(index: number, projectCount: number): string {
   return `oklch(0.7 0.15 ${hue}deg)`;
 }
 
+export type SubtaskProgress = 'complete' | 'partial' | 'none';
+
+const PROGRESS_COLOR: Record<SubtaskProgress, string> = {
+  complete: GREEN,
+  partial: YELLOW,
+  none: RED,
+};
+
+/**
+ * Classifies an issue's sub-task completion for the progress-circle color
+ * (DEV-78). An issue with zero sub-tasks can't be "partial" — it reads as
+ * complete only if the issue itself is Done, otherwise none.
+ */
+export function subtaskProgress(
+  issueStatus: Status,
+  subtaskDone: number,
+  subtaskTotal: number,
+): SubtaskProgress {
+  if (subtaskTotal === 0) return issueStatus === 'done' ? 'complete' : 'none';
+  if (subtaskDone >= subtaskTotal) return 'complete';
+  if (subtaskDone === 0) return 'none';
+  return 'partial';
+}
+
+/** Text explanation of the same signal the circle's color carries — this is
+ *  the non-color cue for DEV-78's color-only-encoding concern. The existing
+ *  {done}/{total} text next to the circle already covers issues *with*
+ *  sub-tasks; this covers the zero-sub-task case too, where that text never
+ *  renders at all. */
+function progressLabel(
+  progress: SubtaskProgress,
+  hasSubtasks: boolean,
+  subtaskDone: number,
+  subtaskTotal: number,
+): string {
+  if (hasSubtasks) return `${subtaskDone}/${subtaskTotal} sub-tasks done`;
+  return progress === 'complete' ? 'Issue done — no sub-tasks' : 'Issue not done — no sub-tasks';
+}
+
 function buildProject(raw: RawProject, index: number, projectCount: number): ProjectVM {
   const counts = countByStatus(raw.issues);
   const health = HEALTH_META[raw.health];
@@ -150,6 +197,8 @@ function buildProject(raw: RawProject, index: number, projectCount: number): Pro
         const pmeta = PRIORITY_META[iss.priority];
         const subtaskTotal = iss.subtasks.length;
         const subtaskDone = iss.subtasks.filter((st) => st.done).length;
+        const hasSubtasks = subtaskTotal > 0;
+        const progress = subtaskProgress(iss.status, subtaskDone, subtaskTotal);
         return {
           id: iss.id,
           title: iss.title,
@@ -158,7 +207,7 @@ function buildProject(raw: RawProject, index: number, projectCount: number): Pro
           priorityLabel: pmeta.label,
           priorityColor: pmeta.color,
           assignee: iss.assignee,
-          hasSubtasks: subtaskTotal > 0,
+          hasSubtasks,
           subtaskDone,
           subtaskTotal,
           subtasks: iss.subtasks.map((st) => ({
@@ -167,6 +216,8 @@ function buildProject(raw: RawProject, index: number, projectCount: number): Pro
             code: st.code,
             url: st.url,
           })),
+          progressColor: PROGRESS_COLOR[progress],
+          progressLabel: progressLabel(progress, hasSubtasks, subtaskDone, subtaskTotal),
         };
       }),
   }));
