@@ -87,17 +87,19 @@ export function IssueCard({
           }}
         >
           <div
+            title={issue.progressLabel}
             style={{
               width: '18px',
               height: '18px',
               borderRadius: '50%',
-              background: 'rgba(255,255,255,.1)',
+              background: `${issue.progressColor}52`,
+              border: `1px solid ${issue.progressColor}`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
               fontSize: '8.5px',
               fontWeight: 600,
-              color: 'rgba(255,255,255,.7)',
+              color: 'rgba(255,255,255,.85)',
             }}
           >
             {issue.assignee}
