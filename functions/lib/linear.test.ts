@@ -129,6 +129,15 @@ describe('mapResponse', () => {
             status: { type: 'completed', name: 'Completed' },
             lead: null,
           },
+          {
+            id: 'proj-canceled',
+            name: 'Scrapped idea',
+            progress: 0,
+            health: null,
+            targetDate: null,
+            status: { type: 'canceled', name: 'Canceled' },
+            lead: null,
+          },
         ],
       },
     },
@@ -202,7 +211,7 @@ describe('mapResponse', () => {
             project: { id: 'proj-live' },
           },
           {
-            // belongs to the hidden project — must not appear
+            // belongs to the completed project — must still appear (DEV-77)
             id: 'DEV-99',
             identifier: 'DEV-99',
             url: 'https://linear.app/devworks/issue/DEV-99',
@@ -214,6 +223,20 @@ describe('mapResponse', () => {
             parent: null,
             project: { id: 'proj-old' },
           },
+          {
+            // belongs to the canceled project — must never appear (follow-up
+            // to DEV-77: canceled projects are dropped outright)
+            id: 'DEV-100',
+            identifier: 'DEV-100',
+            url: 'https://linear.app/devworks/issue/DEV-100',
+            title: 'Scrapped issue',
+            priority: 0,
+            completedAt: null,
+            state: { type: 'backlog' },
+            assignee: null,
+            parent: null,
+            project: { id: 'proj-canceled' },
+          },
         ],
       },
     },
@@ -221,10 +244,14 @@ describe('mapResponse', () => {
 
   const board = mapResponse(projectsRes, issuesRes, NOW);
 
-  it('tags completed/canceled projects as inactive rather than dropping them (DEV-77)', () => {
+  it('tags a completed project as inactive rather than dropping it (DEV-77)', () => {
     expect(board.projects.map((p) => p.id)).toEqual(['proj-live', 'proj-old']);
     expect(board.projects.find((p) => p.id === 'proj-live')?.active).toBe(true);
     expect(board.projects.find((p) => p.id === 'proj-old')?.active).toBe(false);
+  });
+
+  it('drops a canceled project outright — never tagged, never included (follow-up to DEV-77)', () => {
+    expect(board.projects.map((p) => p.id)).not.toContain('proj-canceled');
   });
 
   it('keeps only top-level issues as kanban cards', () => {
@@ -294,9 +321,14 @@ describe('mapResponse', () => {
     expect(board.projects[0].health).toBe('on_track');
   });
 
-  it('still includes issues belonging to an inactive project (DEV-77)', () => {
+  it('still includes issues belonging to a completed (inactive) project (DEV-77)', () => {
     const oldProject = board.projects.find((p) => p.id === 'proj-old');
     expect(oldProject?.issues.map((i) => i.id)).toEqual(['DEV-99']);
+  });
+
+  it('drops issues belonging to a canceled project too, along with the project (follow-up to DEV-77)', () => {
+    const allIds = board.projects.flatMap((p) => p.issues.map((i) => i.id));
+    expect(allIds).not.toContain('DEV-100');
   });
 
   it('throws on a GraphQL error in either response', () => {

@@ -42,7 +42,9 @@ export interface RawProject {
   target: string; // e.g. 'Oct 12', '' when no target date
   progressPct: number; // 0..100, authoritative (from Linear or server-computed)
   issues: RawIssue[];
-  /** False for Linear's completed/canceled projects (DEV-77). */
+  /** False for Linear's completed projects (DEV-77). Canceled projects never
+   *  reach the client at all — they're dropped server-side and must never
+   *  appear regardless of "Include Inactive" (follow-up to DEV-77). */
   active: boolean;
 }
 export interface RawBoard {
@@ -105,9 +107,11 @@ export interface ProjectVM {
   legend: LegendEntry[];
   totalIssues: number;
   columns: ColumnVM[];
-  /** False for an inactive (completed/canceled) project shown via "Include
-   *  Inactive" (DEV-77) — used to badge it, since its health badge alone can
-   *  be misleading for a project that isn't actually being tracked anymore. */
+  /** False for a completed project shown via "Include Inactive" (DEV-77) —
+   *  used to badge it, since its health badge alone can be misleading for a
+   *  project that isn't actually being tracked anymore. Canceled projects
+   *  never reach this far — the server drops them outright (follow-up to
+   *  DEV-77), so `active: false` here always specifically means completed. */
   active: boolean;
 }
 export interface HeaderStats {

@@ -37,13 +37,14 @@ export function ProjectCard({ project, onOpen }: { project: ProjectVM; onOpen: (
         >
           {project.name}
         </div>
-        {/* Shown only via "Include Inactive" (DEV-77) — a completed/canceled
-            project's own health badge can otherwise read misleadingly (it
-            wasn't designed with inactive projects in mind), so this is a
-            separate, unambiguous cue that the project isn't actually being
-            tracked anymore. Not something the issue's decisions explicitly
-            called for; added because showing inactive projects with zero
-            visual distinction from active ones seemed hard to make sense of. */}
+        {/* Shown only via "Include Inactive" (DEV-77) — a completed project's
+            own health badge can otherwise read misleadingly (it wasn't
+            designed with inactive projects in mind), so this is a separate,
+            unambiguous cue that the project isn't actually being tracked
+            anymore. Says COMPLETED rather than the earlier INACTIVE: a
+            canceled project is dropped server-side and can never reach this
+            component (follow-up to DEV-77), so "inactive" here only ever
+            means completed — COMPLETED is the more precise word for it. */}
         {!project.active && (
           <div
             style={{
@@ -57,7 +58,7 @@ export function ProjectCard({ project, onOpen }: { project: ProjectVM; onOpen: (
               flex: 'none',
             }}
           >
-            INACTIVE
+            COMPLETED
           </div>
         )}
         <div
