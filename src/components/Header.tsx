@@ -40,10 +40,20 @@ export function Header({
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {/* Also a home link (DEV-76), same destination as the "MISSION
+            CONTROL" wordmark below. Deliberately NOT a second focusable/
+            announced control: no role or tabIndex, and aria-hidden + empty
+            alt keep it out of the accessibility tree entirely, so keyboard
+            and screen-reader users still see exactly one "back to overview"
+            control (the wordmark) rather than two redundant ones pointing
+            at the same place. Pointer/touch users get both as click targets. */}
         <img
           src={markUrl}
-          alt="DevWorks"
-          style={{ height: '30px', width: 'auto', flex: 'none' }}
+          alt=""
+          aria-hidden="true"
+          onClick={onHome}
+          title="Back to overview"
+          style={{ height: '30px', width: 'auto', flex: 'none', cursor: 'pointer' }}
         />
         <div>
           <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px' }}>
