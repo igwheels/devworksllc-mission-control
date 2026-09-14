@@ -277,22 +277,36 @@ export function mapResponse(
     .filter((p) => p.status?.type !== CANCELED_PROJECT_STATE)
     .map((p) => {
     const allIssues = issuesByProject.get(p.id) ?? [];
+    const issuesById = new Map(allIssues.map((i) => [i.id, i]));
 
-    // Rebuild the parent -> direct-children map from the flat list.
-    const childrenByParent = new Map<string, GqlIssue[]>();
-    for (const i of allIssues) {
-      const pid = i.parent?.id;
-      if (!pid) continue;
-      const arr = childrenByParent.get(pid);
-      if (arr) arr.push(i);
-      else childrenByParent.set(pid, [i]);
+    // Walk an issue's parent chain (within this project's issue set) up to
+    // its top-level ancestor. A parent outside this project's issues (or no
+    // parent at all) makes the issue itself the root. Guards against a
+    // parent cycle by refusing to revisit an id already walked.
+    function rootOf(issue: GqlIssue): GqlIssue {
+      let cur = issue;
+      const seen = new Set<string>([cur.id]);
+      while (cur.parent && issuesById.has(cur.parent.id) && !seen.has(cur.parent.id)) {
+        cur = issuesById.get(cur.parent.id)!;
+        seen.add(cur.id);
+      }
+      return cur;
     }
 
-    // Kanban cards = top-level issues; their direct children become the
-    // sub-task checkboxes. Deeper nesting is intentionally collapsed
-    // (a grandchild attaches to its own parent, which is never rendered).
+    // Kanban cards = top-level issues. Every descendant, at any depth,
+    // flattens into its root ancestor's sub-task list (a grandchild no
+    // longer has to attach to its own never-rendered parent).
+    const descendantsByRoot = new Map<string, GqlIssue[]>();
+    for (const i of allIssues) {
+      const root = rootOf(i);
+      if (root.id === i.id) continue;
+      const arr = descendantsByRoot.get(root.id);
+      if (arr) arr.push(i);
+      else descendantsByRoot.set(root.id, [i]);
+    }
+
     const issues: RawIssue[] = allIssues
-      .filter((i) => !i.parent)
+      .filter((i) => rootOf(i).id === i.id)
       .map((i) => ({
         id: i.id,
         title: i.title,
@@ -301,7 +315,7 @@ export function mapResponse(
         assignee: initials(i.assignee),
         code: i.identifier,
         url: i.url ?? '',
-        subtasks: (childrenByParent.get(i.id) ?? []).map((c) => ({
+        subtasks: (descendantsByRoot.get(i.id) ?? []).map((c) => ({
           title: c.title,
           done: c.completedAt != null || c.state?.type === 'completed',
           code: c.identifier,

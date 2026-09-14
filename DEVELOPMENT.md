@@ -96,9 +96,9 @@ Manual: `npm run deploy`.
 
 - **Card = a Linear project.** One today ("Student Driver Log"); the grid grows
   as DevWorks adds projects.
-- **Kanban card = a top-level issue** (`parent == null`); its **direct children**
-  are the sub-task checkboxes. Deeper nesting is collapsed — change this in
-  `mapResponse` in `functions/lib/linear.ts` if you want Step-level detail promoted.
+- **Kanban card = a top-level issue** (`parent == null`); every descendant at
+  any depth flattens into that card's sub-task checkboxes (`mapResponse` in
+  `functions/lib/linear.ts`).
 - **Health** uses Linear's `health` field when set, otherwise a heuristic
   (`deriveHealth` in `functions/lib/linear.ts`): `done` at 100%; `off_track` if
   past `targetDate` with open issues; `at_risk` if `targetDate` ≤ 7 days out and

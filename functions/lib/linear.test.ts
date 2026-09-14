@@ -197,8 +197,8 @@ describe('mapResponse', () => {
             project: { id: 'proj-live' },
           },
           {
-            // grandchild — attaches to DEV-23 (a non-top-level issue) and
-            // must therefore not surface anywhere
+            // grandchild — attaches to DEV-23, itself a child of DEV-7, so
+            // it must flatten into DEV-7's subtask list rather than vanish
             id: 'DEV-40',
             identifier: 'DEV-40',
             url: 'https://linear.app/devworks/issue/DEV-40',
@@ -279,7 +279,18 @@ describe('mapResponse', () => {
         code: 'DEV-23',
         url: 'https://linear.app/devworks/issue/DEV-23',
       },
+      {
+        title: 'Sub-step',
+        done: false,
+        code: 'DEV-40',
+        url: 'https://linear.app/devworks/issue/DEV-40',
+      },
     ]);
+  });
+
+  it('flattens a grandchild into its top-level ancestor rather than dropping it', () => {
+    const dev7 = board.projects[0].issues[0];
+    expect(dev7.subtasks.map((s) => s.code)).toContain('DEV-40');
   });
 
   it('carries the Linear identifier and url onto issues and subtasks', () => {
