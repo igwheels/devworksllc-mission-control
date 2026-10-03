@@ -60,6 +60,7 @@ Paste the returned namespace id into `wrangler.toml` (`kv_namespaces[0].id`).
 npx wrangler pages secret put LINEAR_TOKEN     # value from step 2
 npx wrangler pages secret put MC_BASIC_USER    # site username
 npx wrangler pages secret put MC_BASIC_PASS    # site password
+npx wrangler pages secret put LINEAR_WEBHOOK_SECRET   # signing secret from step 6
 ```
 
 ### 5. Custom domain
@@ -67,6 +68,20 @@ npx wrangler pages secret put MC_BASIC_PASS    # site password
 After the first deploy, in the Cloudflare dashboard → Workers & Pages →
 `devworksllc-mission-control` → Custom domains → add `mc.devworksllc.com`.
 The DNS record is created automatically (the zone is already on Cloudflare).
+
+### 6. Linear webhook (instant refresh)
+
+Without this, the dashboard picks up Linear changes on its next poll, so changes
+can lag by up to about two minutes. The webhook clears the cached board whenever
+an issue or project is created or updated, so the next poll fetches fresh data.
+
+1. Linear → Settings → API → Webhooks → **New webhook**.
+2. URL: `https://<your-mc-domain>/api/linear-webhook`
+3. Resource types: **Issues** and **Projects**.
+4. Copy the **Signing secret** and set it as `LINEAR_WEBHOOK_SECRET` (see step 4).
+
+Deliveries are rejected unless the HMAC signature is valid and `webhookTimestamp`
+is within 60 seconds.
 
 ## Local development
 

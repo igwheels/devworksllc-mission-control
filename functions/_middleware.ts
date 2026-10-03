@@ -203,6 +203,10 @@ export const onRequest: PagesFunction<Env> = async ({ request, env, next }) => {
 
   if (path === '/api/login') return handleLogin(request, env, env.MC_SESSION_SECRET);
 
+  // Linear's webhook delivery can't carry a session. It is authenticated by
+  // its own HMAC signature in functions/api/linear-webhook.ts.
+  if (path === '/api/linear-webhook') return next();
+
   const cookies = parseCookies(request.headers.get('cookie'));
   const authed = await verifySession(env.MC_SESSION_SECRET, cookies[SESSION_COOKIE]);
   if (authed) return next();
